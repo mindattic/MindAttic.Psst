@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MindAttic.Psst</RootNamespace>
+    <AssemblyName>MindAttic.Psst</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.0</Version>
+    <PackageId>MindAttic.Psst</PackageId>
+    <Title>MindAttic.Psst</Title>
+    <Authors>MindAttic</Authors>
+    <Company>MindAttic</Company>
+    <Description>Standalone notifier that plays the ICQ "Psst" sound and sends an SMS when a wrapped CLI process finishes. SMS via Twilio (preferred) with email-to-SMS gateway fallback. Credentials resolved through MindAttic.Vault.</Description>
+    <PackageTags>mindattic;psst;notification;sms;twilio;cli;notifier</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2026 MindAttic</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Sound\icq-uh-oh.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pulls in System.Windows.Extensions so SoundPlayer is available without
+         dragging in the full Windows Forms / WPF designer surface. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+    <PackageReference Include="MindAttic.Vault" Version="0.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
+  </ItemGroup>
+
+</Project>

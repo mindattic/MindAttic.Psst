@@ -1,0 +1,4 @@
+﻿<Solution>
+  <Project Path="MindAttic.Psst/MindAttic.Psst.csproj" />
+  <Project Path="MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj" />
+</Solution>
