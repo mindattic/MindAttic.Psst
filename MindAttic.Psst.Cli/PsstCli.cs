@@ -149,7 +149,7 @@ public sealed class PsstCli
         var played = PsstSoundPlayer.Play(waitForCompletion: true);
         if (played)
         {
-            Console.WriteLine("played.");
+            Console.WriteLine($"played via {PsstSoundPlayer.LastTransport}.");
             return 0;
         }
         Console.Error.WriteLine($"could not play: {PsstSoundPlayer.LastError}");

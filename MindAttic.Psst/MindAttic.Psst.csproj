@@ -18,13 +18,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Both formats are shipped. The player prefers MP3 (decoded via NAudio's
+         Mp3FileReader) and falls back to WAV via System.Media.SoundPlayer when
+         the NAudio path fails (e.g. ACM MP3 codec missing). -->
+    <EmbeddedResource Include="Sound\icq-uh-oh.mp3" />
     <EmbeddedResource Include="Sound\icq-uh-oh.wav" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Pulls in System.Windows.Extensions so SoundPlayer is available without
-         dragging in the full Windows Forms / WPF designer surface. -->
+    <!-- Microsoft.WindowsDesktop.App pulls in System.Windows.Extensions for the
+         WAV-fallback SoundPlayer. NAudio gives us a managed MP3 decoder + a
+         WaveOut audio sink. -->
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="MindAttic.Vault" Version="0.2.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
   </ItemGroup>
