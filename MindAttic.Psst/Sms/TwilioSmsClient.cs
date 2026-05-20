@@ -46,9 +46,21 @@ public sealed class TwilioSmsClient : ISmsClient
                 return new SmsResult(true, TransportName, "queued");
             return new SmsResult(false, TransportName, $"HTTP {(int)response.StatusCode}: {Truncate(body, 200)}");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // User-initiated cancellation is not a transport failure — let it
+            // surface to the caller.
+            throw;
+        }
+        catch (HttpRequestException ex)
         {
             return new SmsResult(false, TransportName, ex.Message);
+        }
+        catch (TaskCanceledException ex)
+        {
+            // HttpClient timeout surfaces as TaskCanceledException with an
+            // un-signaled token. Treat that as a transport failure.
+            return new SmsResult(false, TransportName, $"timeout: {ex.Message}");
         }
     }
 

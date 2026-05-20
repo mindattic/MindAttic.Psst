@@ -1,4 +1,4 @@
-﻿namespace MindAttic.Psst.Configuration;
+namespace MindAttic.Psst.Configuration;
 
 using Microsoft.Extensions.Configuration;
 
@@ -29,7 +29,8 @@ public sealed record PsstConfiguration(
     TwilioSettings? Twilio,
     EmailSettings? Email,
     string? RecipientPhoneNumber,
-    string? RecipientEmailSmsAddress)
+    string? RecipientEmailSmsAddress,
+    IReadOnlyList<string> Errors)
 {
     public const string Section = "MindAttic:Vault:Notifications";
 
@@ -39,45 +40,74 @@ public sealed record PsstConfiguration(
     /// <summary>
     /// Pull settings from the given configuration. Missing/empty values produce
     /// null sub-records so callers can branch on what's actually wired up.
+    /// Partial-config diagnostics are exposed via <see cref="Errors"/> so the
+    /// CLI can tell the user *which* field is missing.
     /// </summary>
     public static PsstConfiguration Load(IConfiguration configuration)
     {
         var root = configuration.GetSection(Section);
-        return new PsstConfiguration(
-            TwilioSettings.Load(root.GetSection("twilio")),
-            EmailSettings.Load(root.GetSection("email")),
-            root["to"],
-            root["toEmail"]);
+        var errors = new List<string>();
+
+        var twilio = TwilioSettings.Load(root.GetSection("twilio"), errors);
+        var email = EmailSettings.Load(root.GetSection("email"), errors);
+        var to = root["to"];
+        var toEmail = root["toEmail"];
+
+        if (twilio is not null && string.IsNullOrWhiteSpace(to))
+            errors.Add("twilio is configured but 'to' (recipient phone) is missing");
+        if (email is not null && string.IsNullOrWhiteSpace(toEmail))
+            errors.Add("email is configured but 'toEmail' (recipient gateway address) is missing");
+
+        return new PsstConfiguration(twilio, email, to, toEmail, errors);
     }
 }
 
 public sealed record TwilioSettings(string AccountSid, string AuthToken, string From)
 {
-    public static TwilioSettings? Load(IConfigurationSection s)
+    public static TwilioSettings? Load(IConfigurationSection s, List<string> errors)
     {
         var sid = s["accountSid"];
         var tok = s["authToken"];
         var from = s["from"];
-        if (string.IsNullOrWhiteSpace(sid) || string.IsNullOrWhiteSpace(tok) || string.IsNullOrWhiteSpace(from))
+
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(sid)) missing.Add("accountSid");
+        if (string.IsNullOrWhiteSpace(tok)) missing.Add("authToken");
+        if (string.IsNullOrWhiteSpace(from)) missing.Add("from");
+
+        if (missing.Count == 3) return null;
+        if (missing.Count > 0)
+        {
+            errors.Add($"twilio is partially configured — missing: {string.Join(", ", missing)}");
             return null;
-        return new TwilioSettings(sid, tok, from);
+        }
+        return new TwilioSettings(sid!, tok!, from!);
     }
 }
 
 public sealed record EmailSettings(string SmtpHost, int SmtpPort, string Username, string Password, string From)
 {
-    public static EmailSettings? Load(IConfigurationSection s)
+    public static EmailSettings? Load(IConfigurationSection s, List<string> errors)
     {
         var host = s["smtpHost"];
         var user = s["username"];
         var pass = s["password"];
         var from = s["from"];
-        if (string.IsNullOrWhiteSpace(host) ||
-            string.IsNullOrWhiteSpace(user) ||
-            string.IsNullOrWhiteSpace(pass) ||
-            string.IsNullOrWhiteSpace(from))
+
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(host)) missing.Add("smtpHost");
+        if (string.IsNullOrWhiteSpace(user)) missing.Add("username");
+        if (string.IsNullOrWhiteSpace(pass)) missing.Add("password");
+        if (string.IsNullOrWhiteSpace(from)) missing.Add("from");
+
+        if (missing.Count == 4) return null;
+        if (missing.Count > 0)
+        {
+            errors.Add($"email is partially configured — missing: {string.Join(", ", missing)}");
             return null;
+        }
+
         var port = int.TryParse(s["smtpPort"], out var p) ? p : 587;
-        return new EmailSettings(host, port, user, pass, from);
+        return new EmailSettings(host!, port, user!, pass!, from!);
     }
 }

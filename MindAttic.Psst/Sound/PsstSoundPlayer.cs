@@ -5,6 +5,13 @@ using System.Reflection;
 using System.Runtime.Versioning;
 using NAudio.Wave;
 
+/// <summary>Outcome of a single <see cref="PsstSoundPlayer.PlayAsync"/> call.</summary>
+public sealed record PsstPlayResult(bool Success, string Transport, string Error)
+{
+    public static PsstPlayResult Ok(string transport) => new(true, transport, "");
+    public static PsstPlayResult Fail(string error) => new(false, "", error);
+}
+
 /// <summary>
 /// Plays the embedded attention-getter clip.
 ///
@@ -12,9 +19,7 @@ using NAudio.Wave;
 /// <list type="number">
 ///   <item><description>
 ///     <b>MP3 via NAudio.</b> <see cref="Mp3FileReader"/> decodes the embedded
-///     stream and <see cref="WaveOutEvent"/> renders it through WASAPI. This
-///     is the preferred path — keeps the source clip in its native format and
-///     avoids the rebuild-step needed by WAV.
+///     stream and <see cref="WaveOutEvent"/> renders it through WASAPI.
 ///   </description></item>
 ///   <item><description>
 ///     <b>WAV via <see cref="SoundPlayer"/>.</b> Pure managed, no codec
@@ -28,105 +33,95 @@ public static class PsstSoundPlayer
     private const string Mp3Resource = "MindAttic.Psst.Sound.icq-uh-oh.mp3";
     private const string WavResource = "MindAttic.Psst.Sound.icq-uh-oh.wav";
 
-    /// <summary>Last failure reason from a Play() call — empty on success.</summary>
-    public static string LastError { get; private set; } = "";
-
-    /// <summary>Which transport actually produced sound on the last successful call.</summary>
-    public static string LastTransport { get; private set; } = "";
-
     /// <summary>
-    /// Play the clip. When <paramref name="waitForCompletion"/> is true, blocks
-    /// until playback ends. Tries MP3 first, then WAV. Returns false only when
-    /// both paths failed; <see cref="LastError"/> aggregates the diagnostics.
+    /// Play the clip. Awaits until playback ends or <paramref name="cancellationToken"/>
+    /// fires. Tries MP3 first, then WAV; returns the failing reason from both
+    /// transports when neither works.
     /// </summary>
-    public static bool Play(bool waitForCompletion = true)
+    public static async Task<PsstPlayResult> PlayAsync(CancellationToken cancellationToken = default)
     {
-        LastError = "";
-        LastTransport = "";
-
         if (!OperatingSystem.IsWindows())
-        {
-            LastError = "not windows";
-            return false;
-        }
+            return PsstPlayResult.Fail("not windows");
 
-        if (TryPlayMp3(waitForCompletion, out var mp3Err))
-        {
-            LastTransport = "MP3 (NAudio)";
-            return true;
-        }
+        var mp3 = await TryPlayMp3Async(cancellationToken);
+        if (mp3.Success) return mp3;
 
-        if (TryPlayWav(waitForCompletion, out var wavErr))
-        {
-            LastTransport = "WAV (SoundPlayer)";
-            return true;
-        }
+        var wav = TryPlayWav();
+        if (wav.Success) return wav;
 
-        LastError = $"MP3: {mp3Err}; WAV: {wavErr}";
-        return false;
+        return PsstPlayResult.Fail($"MP3: {mp3.Error}; WAV: {wav.Error}");
     }
 
-    private static bool TryPlayMp3(bool wait, out string error)
+    private static async Task<PsstPlayResult> TryPlayMp3Async(CancellationToken cancellationToken)
     {
-        error = "";
+        Stream? resource = null;
+        MemoryStream? ms = null;
+        Mp3FileReader? reader = null;
+        WaveOutEvent? output = null;
         try
         {
-            using var stream = LoadResource(Mp3Resource);
-            if (stream is null)
-            {
-                error = $"embedded resource '{Mp3Resource}' not found";
-                return false;
-            }
+            resource = LoadResource(Mp3Resource);
+            if (resource is null)
+                return PsstPlayResult.Fail($"embedded resource '{Mp3Resource}' not found");
 
-            // NAudio's Mp3FileReader needs a seekable stream — copy to memory.
-            using var ms = new MemoryStream();
-            stream.CopyTo(ms);
+            // Mp3FileReader needs a seekable stream — copy to memory, then keep
+            // the memory stream alive for the lifetime of the reader (the
+            // reader references the underlying stream during decoding).
+            ms = new MemoryStream();
+            await resource.CopyToAsync(ms, cancellationToken);
             ms.Position = 0;
 
-            using var reader = new Mp3FileReader(ms);
-            using var output = new WaveOutEvent();
+            reader = new Mp3FileReader(ms);
+            output = new WaveOutEvent();
             output.Init(reader);
-            output.Play();
 
-            if (wait)
+            var done = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            output.PlaybackStopped += (_, args) => done.TrySetResult(args.Exception);
+
+            using var registration = cancellationToken.Register(() =>
             {
-                // Loop on PlaybackState rather than relying solely on the
-                // PlaybackStopped event — the using-block disposes the sink
-                // synchronously, and we want to keep the foreground process
-                // alive until the clip finishes.
-                while (output.PlaybackState == PlaybackState.Playing)
-                    Thread.Sleep(50);
-            }
-            return true;
+                try { output?.Stop(); } catch { /* sink disposed */ }
+                done.TrySetCanceled(cancellationToken);
+            });
+
+            output.Play();
+            var error = await done.Task;
+            if (error is not null)
+                return PsstPlayResult.Fail(error.Message);
+            return PsstPlayResult.Ok("MP3 (NAudio)");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            error = ex.Message;
-            return false;
+            return PsstPlayResult.Fail(ex.Message);
+        }
+        finally
+        {
+            output?.Dispose();
+            reader?.Dispose();
+            ms?.Dispose();
+            resource?.Dispose();
         }
     }
 
-    private static bool TryPlayWav(bool wait, out string error)
+    private static PsstPlayResult TryPlayWav()
     {
-        error = "";
         try
         {
             using var stream = LoadResource(WavResource);
             if (stream is null)
-            {
-                error = $"embedded resource '{WavResource}' not found";
-                return false;
-            }
+                return PsstPlayResult.Fail($"embedded resource '{WavResource}' not found");
 
             var player = new SoundPlayer(stream);
-            if (wait) player.PlaySync();
-            else player.Play();
-            return true;
+            player.PlaySync();
+            return PsstPlayResult.Ok("WAV (SoundPlayer)");
         }
         catch (Exception ex)
         {
-            error = ex.Message;
-            return false;
+            return PsstPlayResult.Fail(ex.Message);
         }
     }
 

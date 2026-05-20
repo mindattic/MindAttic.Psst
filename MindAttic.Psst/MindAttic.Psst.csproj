@@ -6,6 +6,10 @@
     <AssemblyName>MindAttic.Psst</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Shared MindAttic.Vault User Secrets ID: one `dotnet user-secrets set`
+         command writes to a single secrets.json that every family app sees.
+         Pin via VaultConfigurationKeys.SharedUserSecretsId. -->
+    <UserSecretsId>mindattic-vault-shared</UserSecretsId>
     <Version>0.1.0</Version>
     <PackageId>MindAttic.Psst</PackageId>
     <Title>MindAttic.Psst</Title>
@@ -31,6 +35,7 @@
          WaveOut audio sink. -->
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="MailKit" Version="4.16.0" />
     <PackageReference Include="MindAttic.Vault" Version="0.2.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
   </ItemGroup>
