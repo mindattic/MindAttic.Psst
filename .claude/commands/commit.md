@@ -1,4 +1,4 @@
-Stage and commit the current working-tree changes.
+Stage, commit, and push the current working-tree changes.
 
 Run these in parallel first:
 - `git status` (no `-uall` flag — large repos)
@@ -15,7 +15,9 @@ Then:
    ```
    Pass the message via heredoc so multi-line formatting is preserved.
 5. Run `git status` after the commit and confirm it succeeded.
+6. Push to the upstream remote (`git push`). If the branch has no upstream yet, push with `-u origin <branch>`. Surface the remote's response — and if the push is rejected (e.g. non-fast-forward), STOP and report to the user instead of force-pushing.
+7. Print the commit hash + a one-line summary.
 
-Do NOT push. Do NOT skip hooks (`--no-verify`). If a pre-commit hook fails, fix the underlying issue and create a fresh commit — never amend.
+Do NOT skip hooks (`--no-verify`). Do NOT force-push. If a pre-commit hook fails, fix the underlying issue and create a fresh commit — never amend. If a push to `main`/`master` is rejected, warn the user before any recovery action; do not force-push protected branches.
 
-If there are no changes, say so and exit without creating an empty commit.
+If there are no changes, say so and exit without creating an empty commit (and skip the push).

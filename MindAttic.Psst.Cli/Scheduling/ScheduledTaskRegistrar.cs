@@ -144,6 +144,12 @@ public static class ScheduledTaskRegistrar
 
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
+        // Mark this invocation as scheduler-spawned so psst skips the
+        // "implicit --schedule now when --interval is given" logic.
+        // Without this, the deferred fire would just register another
+        // scheduled task instead of actually running the send loop —
+        // recursion that never reaches the SMS path.
+        sb.AppendLine("set PSST_FROM_SCHEDULE=1");
         // Run psst with the original argv. Quote the exe path even when
         // it has no spaces — cheap and removes any ambiguity about where
         // the exe ends and the args begin.

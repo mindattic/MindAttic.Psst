@@ -629,7 +629,13 @@ public sealed class PsstCli
         // Implicit `--schedule now` when an interval is present but no
         // explicit schedule. Hands the drip loop off to Task Scheduler so
         // the originating shell doesn't have to stay open.
-        if (hasInterval && !scheduledFor.HasValue)
+        //
+        // Skip this branch when we're already running as the deferred
+        // child of a scheduled task (marker set by the launcher .cmd) —
+        // otherwise the fire would just re-schedule itself instead of
+        // sending, which is the worst kind of bug: silent infinite
+        // recursion that never reaches the actual SMS path.
+        if (hasInterval && !scheduledFor.HasValue && !IsFromScheduler())
             scheduledFor = NextMinuteBoundary(DateTime.Now);
 
         return new ParsedSmsFlags(
@@ -643,6 +649,20 @@ public sealed class PsstCli
         static ParsedSmsFlags Fail(string err) =>
             new(Array.Empty<string>(), 1, TimeSpan.Zero, null, Array.Empty<string>(), err);
     }
+
+    /// <summary>
+    /// True iff this <c>psst</c> process was spawned by a launcher
+    /// <c>.cmd</c> registered by <see cref="ScheduledTaskRegistrar"/>.
+    /// The launcher sets <c>PSST_FROM_SCHEDULE=1</c> in its environment
+    /// before invoking <c>psst.exe</c> so deferred fires can suppress
+    /// the implicit <c>--schedule now</c> branch and actually run the
+    /// send path instead of recursively re-scheduling themselves.
+    /// </summary>
+    private static bool IsFromScheduler() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("PSST_FROM_SCHEDULE"),
+            "1",
+            StringComparison.Ordinal);
 
     /// <summary>
     /// Earliest fire-time we can hand to <c>schtasks /ST</c>, which only
