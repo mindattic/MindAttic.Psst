@@ -1,13 +1,16 @@
 namespace MindAttic.Psst.Cli;
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using MindAttic.Psst;
+using MindAttic.Psst.Cli.Scheduling;
 using MindAttic.Psst.Configuration;
 using MindAttic.Psst.Contacts;
 using MindAttic.Psst.Sms;
 using MindAttic.Psst.Sound;
+using MindAttic.Psst.Time;
 using MindAttic.Vault.Configuration;
 using MindAttic.Vault.Paths;
 
@@ -19,11 +22,20 @@ using MindAttic.Vault.Paths;
 /// <para>Usage:</para>
 /// <code>
 ///   psst [--silent] -- &lt;command&gt; [args...]
-///                                  Run the command, notify on exit.
-///   psst test [--silent] [message] Fire a test notification immediately.
-///   psst ping                      Show what's configured + what would fire.
-///   psst sound                     Play just the Psst sound (sanity check).
+///                                       Run the command, notify on exit.
+///   psst [--silent] test [message]      Fire a test notification immediately.
+///   psst ping                           Show what's configured + what would fire.
+///   psst sound                          Play just the Psst sound (sanity check).
+///   psst contacts [list|add|rm]         Manage the contact book.
+///   psst sms [flags] &lt;to&gt; &lt;message...&gt;   Send a one-off SMS.
 /// </code>
+///
+/// <para>
+/// The <c>sms</c> subcommand also supports repetition and scheduling via
+/// <c>--repeat</c>, <c>--interval</c> (alias <c>--every</c>), and
+/// <c>--schedule</c> (alias <c>--start</c>). See
+/// <see cref="SmsAsync"/> and <see cref="ParseSmsFlags"/>.
+/// </para>
 /// </summary>
 public sealed class PsstCli
 {
@@ -59,13 +71,14 @@ public sealed class PsstCli
         {
             return args[0].ToLowerInvariant() switch
             {
-                "--"        => await WrapAsync(args.Skip(1).ToArray(), psstConfig, silent),
-                "test"      => await TestAsync(args.Skip(1).ToArray(), psstConfig, silent),
-                "ping"      => Ping(psstConfig),
-                "sound"     => await SoundAsync(),
-                "contacts"  => Contacts(args.Skip(1).ToArray()),
-                "sms"       => await SmsAsync(args.Skip(1).ToArray(), psstConfig),
-                _           => UnknownCommand(args[0]),
+                "--"                       => await WrapAsync(args.Skip(1).ToArray(), psstConfig, silent),
+                "test"                     => await TestAsync(args.Skip(1).ToArray(), psstConfig, silent),
+                "ping"                     => Ping(psstConfig),
+                "sound"                    => await SoundAsync(),
+                "contacts"                 => Contacts(args.Skip(1).ToArray()),
+                "sms"                      => await SmsAsync(args.Skip(1).ToArray(), psstConfig),
+                "scheduled" or "pending"   => await ScheduledAsync(args.Skip(1).ToArray()),
+                _                          => UnknownCommand(args[0]),
             };
         }
         catch (Exception ex)
@@ -354,21 +367,76 @@ public sealed class PsstCli
     }
 
     /// <summary>
+    /// One-line usage hint reused by every error path in <see cref="SmsAsync"/>
+    /// and <see cref="ParseSmsFlags"/>. Kept in one place so the canonical
+    /// flag spelling never drifts between the parser and the help text.
+    /// </summary>
+    private const string SmsUsage =
+        "usage: psst sms [--repeat N] [--interval|--every <30s|5m|2h|1d>] " +
+        "[--schedule|--start <10:30am>] <name-or-phone> <message...>";
+
+    /// <summary>
+    /// Result of parsing the <c>sms</c> subcommand's argv. Carries both the
+    /// extracted flag values and two derived argv lists:
+    /// <list type="bullet">
+    ///   <item>
+    ///     <see cref="Positional"/> — non-flag args in original order. The
+    ///     first is the recipient, the rest are the message words.
+    ///   </item>
+    ///   <item>
+    ///     <see cref="ArgsWithoutSchedule"/> — every original arg
+    ///     <em>except</em> the <c>--schedule</c> / <c>--start</c> pair.
+    ///     Used when registering a scheduled task, so the deferred
+    ///     invocation runs the send path instead of recursively scheduling
+    ///     itself.
+    ///   </item>
+    /// </list>
+    /// On parse failure <see cref="Error"/> is populated and all other
+    /// fields hold sentinel values.
+    /// </summary>
+    private sealed record ParsedSmsFlags(
+        string[] Positional,
+        int Repeat,
+        TimeSpan Interval,
+        DateTime? ScheduledFor,
+        string[] ArgsWithoutSchedule,
+        string? Error);
+
+    /// <summary>
     /// Send a one-off SMS to a contact (by name) or an arbitrary US phone
     /// number. Uses the same email-to-SMS fanout as the notifier path, with
-    /// the recipient overridden for this send only — no configured `to`
+    /// the recipient overridden for this send only — no configured <c>to</c>
     /// fallback, no audio cue.
+    ///
+    /// <para>Supported flags (parsed by <see cref="ParseSmsFlags"/>):</para>
+    /// <list type="bullet">
+    ///   <item><c>--repeat N</c> — send the message <c>N</c> times total. Default <c>1</c>.</item>
+    ///   <item><c>--interval D</c> / <c>--every D</c> — delay between sends. Required when <c>--repeat &gt; 1</c>.</item>
+    ///   <item><c>--schedule T</c> / <c>--start T</c> — defer the first send to local time <c>T</c> (next occurrence) via Windows Task Scheduler. Combines with <c>--repeat</c>/<c>--interval</c>: the cadence loop runs starting from the scheduled fire time.</item>
+    /// </list>
     /// </summary>
     private static async Task<int> SmsAsync(string[] args, PsstConfiguration config)
     {
-        if (args.Length < 2)
+        var parse = ParseSmsFlags(args);
+        if (parse.Error is not null)
         {
-            Console.Error.WriteLine("usage: psst sms <name-or-phone> <message...>");
+            Console.Error.WriteLine($"error: {parse.Error}");
+            Console.Error.WriteLine(SmsUsage);
             return 1;
         }
-        var recipient = args[0];
-        var message = string.Join(' ', args.Skip(1));
 
+        if (parse.Positional.Length < 2)
+        {
+            Console.Error.WriteLine(SmsUsage);
+            return 1;
+        }
+
+        var recipient = parse.Positional[0];
+        var message = string.Join(' ', parse.Positional.Skip(1));
+
+        // Recipient resolution: contact-book lookup first (case-insensitive),
+        // falling back to bare US phone-number parsing. Anything that isn't
+        // either is a hard error — we don't want to silently send to a typo.
         var book = ContactStore.Load();
         var contact = book.Find(recipient);
 
@@ -399,21 +467,328 @@ public sealed class PsstCli
             return 1;
         }
 
-        // Replace just the recipient phone for this send; null out any
-        // explicit `toEmail` so the fanout is purely the override number's.
+        // --schedule / --start path: hand off to Windows Task Scheduler and
+        // exit. The scheduled invocation will run the send-and-loop path
+        // below (because ArgsWithoutSchedule has the schedule flag stripped).
+        if (parse.ScheduledFor.HasValue)
+        {
+            var exePath = Environment.ProcessPath
+                ?? throw new InvalidOperationException("could not resolve current psst.exe path");
+            var scheduledArgs = new List<string> { "sms" };
+            scheduledArgs.AddRange(parse.ArgsWithoutSchedule);
+
+            // Stash human-readable metadata next to the launcher so
+            // `psst scheduled` can list the pending send without
+            // reverse-engineering the .cmd file.
+            var metadata = new ScheduledTaskRegistrar.SchedulingMetadata(
+                Recipient:       label,
+                Message:         message,
+                Repeat:          parse.Repeat,
+                IntervalSeconds: (int)parse.Interval.TotalSeconds);
+
+            var reg = await ScheduledTaskRegistrar.RegisterAsync(
+                exePath, scheduledArgs.ToArray(), parse.ScheduledFor.Value, metadata);
+            if (!reg.Success)
+            {
+                Console.Error.WriteLine($"error: could not schedule task — {reg.Error}");
+                return 1;
+            }
+            Console.WriteLine($"→ {label}: {message}");
+            Console.WriteLine($"  ⏰ scheduled for {parse.ScheduledFor.Value:yyyy-MM-dd HH:mm} (task: {reg.TaskName})");
+            if (parse.Repeat > 1)
+                Console.WriteLine($"  ↻ then will repeat {parse.Repeat - 1} more time(s) every {DurationParser.Format(parse.Interval)}");
+            Console.WriteLine($"  · launcher: {reg.LauncherPath}");
+            return 0;
+        }
+
+        // Send path. Replace just the recipient phone for this send; null
+        // out any explicit `toEmail` so the fanout is purely the override
+        // number's carrier gateways.
         var overridden = config with
         {
             RecipientPhoneNumber = phone,
             RecipientEmailSmsAddress = null,
         };
-
         var notifier = new PsstNotifier(overridden);
-        var result = await notifier.NotifyAsync(message, silent: true);
-        Console.WriteLine($"→ {label}: {message}");
-        foreach (var a in result.SmsAttempts)
-            Console.WriteLine($"  {(a.Success ? "✓" : "✗")} {a.Transport}: {a.Detail}");
-        return result.AnySmsSent ? 0 : 1;
+
+        var allSucceeded = true;
+        for (var i = 0; i < parse.Repeat; i++)
+        {
+            // Inter-send delay. Printed before the sleep so the user sees
+            // progress in the terminal even when the loop is long-running.
+            if (i > 0)
+            {
+                Console.WriteLine($"  · sleeping {DurationParser.Format(parse.Interval)} before send {i + 1} of {parse.Repeat}…");
+                try { await Task.Delay(parse.Interval); }
+                catch (TaskCanceledException) { return 1; }
+            }
+
+            var result = await notifier.NotifyAsync(message, silent: true);
+            var sendLabel = parse.Repeat == 1 ? "" : $" [{i + 1}/{parse.Repeat}]";
+            Console.WriteLine($"→ {label}{sendLabel}: {message}");
+            foreach (var a in result.SmsAttempts)
+                Console.WriteLine($"  {(a.Success ? "✓" : "✗")} {a.Transport}: {a.Detail}");
+            if (!result.AnySmsSent) allSucceeded = false;
+        }
+        return allSucceeded ? 0 : 1;
     }
+
+    /// <summary>
+    /// Walk the <c>sms</c> argv once, peeling off recognized flags and
+    /// returning everything else as positional args. Flags may appear in
+    /// any position, but a flag's value must immediately follow it.
+    ///
+    /// <para>
+    /// Accepted flags (case-sensitive — matches the rest of the CLI):
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>--repeat &lt;positive-int&gt;</c></item>
+    ///   <item><c>--interval &lt;duration&gt;</c> or <c>--every &lt;duration&gt;</c></item>
+    ///   <item><c>--schedule &lt;time&gt;</c> or <c>--start &lt;time&gt;</c></item>
+    /// </list>
+    ///
+    /// <para>
+    /// Validation rules enforced here (so the call site stays linear):
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>--repeat</c> must be ≥ 1.</item>
+    ///   <item><c>--interval</c> / <c>--every</c> must be a strictly positive duration.</item>
+    ///   <item><c>--repeat &gt; 1</c> requires <c>--interval</c> / <c>--every</c> — otherwise a typo could fire a flood of messages with no spacing.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// Convenience rule: if <c>--interval</c> / <c>--every</c> is present
+    /// but <c>--schedule</c> / <c>--start</c> is not, the parser fills in
+    /// an implicit "schedule for now" — specifically the next whole-minute
+    /// boundary (Task Scheduler's <c>/ST</c> only accepts minute
+    /// precision). This makes a drip loop detach into a scheduled task
+    /// instead of blocking the originating shell process.
+    /// </para>
+    /// </summary>
+    private static ParsedSmsFlags ParseSmsFlags(string[] args)
+    {
+        var positional = new List<string>();
+        var withoutSchedule = new List<string>();
+        var repeat = 1;
+        var interval = TimeSpan.Zero;
+        var hasInterval = false;
+        DateTime? scheduledFor = null;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+
+            if (a == "--repeat")
+            {
+                if (i + 1 >= args.Length)
+                    return Fail("--repeat needs a positive integer");
+                if (!int.TryParse(args[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out var n) || n < 1)
+                    return Fail($"--repeat needs a positive integer (got '{args[i + 1]}')");
+                repeat = n;
+                withoutSchedule.Add(a);
+                withoutSchedule.Add(args[i + 1]);
+                i++;
+                continue;
+            }
+
+            if (a == "--interval" || a == "--every")
+            {
+                if (i + 1 >= args.Length)
+                    return Fail($"{a} needs a duration (e.g. 30s, 5m, 2h, 1d)");
+                if (!DurationParser.TryParse(args[i + 1], out var d) || d <= TimeSpan.Zero)
+                    return Fail($"{a} got '{args[i + 1]}' — expected something like 30s, 5m, 2h, 1d");
+                interval = d;
+                hasInterval = true;
+                withoutSchedule.Add(a);
+                withoutSchedule.Add(args[i + 1]);
+                i++;
+                continue;
+            }
+
+            if (a == "--schedule" || a == "--start")
+            {
+                if (i + 1 >= args.Length)
+                    return Fail($"{a} needs a time (e.g. 10:30am, 2:30pm, 10:30, 22:30)");
+                if (!TimeOfDayParser.TryParse(args[i + 1], DateTime.Now, out var when))
+                    return Fail($"{a} got '{args[i + 1]}' — expected like 10:30am, 2:30pm, 10:30, 22:30");
+                scheduledFor = when;
+                // Intentionally do NOT add --schedule/--start to
+                // withoutSchedule — the scheduled-fire invocation must not
+                // recursively re-schedule itself.
+                i++;
+                continue;
+            }
+
+            positional.Add(a);
+            withoutSchedule.Add(a);
+        }
+
+        if (repeat > 1 && !hasInterval)
+            return Fail("--repeat > 1 requires --interval / --every (e.g. --interval 30m)");
+
+        // Implicit `--schedule now` when an interval is present but no
+        // explicit schedule. Hands the drip loop off to Task Scheduler so
+        // the originating shell doesn't have to stay open.
+        if (hasInterval && !scheduledFor.HasValue)
+            scheduledFor = NextMinuteBoundary(DateTime.Now);
+
+        return new ParsedSmsFlags(
+            positional.ToArray(),
+            repeat,
+            interval,
+            scheduledFor,
+            withoutSchedule.ToArray(),
+            Error: null);
+
+        static ParsedSmsFlags Fail(string err) =>
+            new(Array.Empty<string>(), 1, TimeSpan.Zero, null, Array.Empty<string>(), err);
+    }
+
+    /// <summary>
+    /// Earliest fire-time we can hand to <c>schtasks /ST</c>, which only
+    /// supports minute precision. Returns the next whole-minute boundary
+    /// strictly after <paramref name="now"/>, with a one-minute cushion
+    /// when we're within 5 seconds of the boundary so the registration
+    /// call doesn't race the trigger.
+    /// </summary>
+    private static DateTime NextMinuteBoundary(DateTime now)
+    {
+        var next = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Local)
+            .AddMinutes(1);
+        if (next - now < TimeSpan.FromSeconds(5))
+            next = next.AddMinutes(1);
+        return next;
+    }
+
+    /// <summary>
+    /// Dispatch for the <c>scheduled</c> / <c>pending</c> subcommand.
+    /// Subcommands:
+    /// <list type="bullet">
+    ///   <item><c>list</c> (default) — render a table of pending Psst tasks.</item>
+    ///   <item><c>cancel &lt;task-name&gt;</c> (also: <c>rm</c>, <c>delete</c>) — remove one.</item>
+    ///   <item><c>clear</c> — cancel every pending Psst task at once.</item>
+    /// </list>
+    /// </summary>
+    private static async Task<int> ScheduledAsync(string[] args)
+    {
+        var sub = args.Length == 0 ? "list" : args[0].ToLowerInvariant();
+        return sub switch
+        {
+            "list" or "ls"                       => await ScheduledListAsync(),
+            "cancel" or "rm" or "delete" or "del" => await ScheduledCancelAsync(args.Skip(1).ToArray()),
+            "clear"                              => await ScheduledClearAsync(),
+            _                                    => ScheduledUsage(sub),
+        };
+    }
+
+    /// <summary>
+    /// Print the pending task list. Empty list is a soft success with a
+    /// hint, not an error — "nothing pending" is a perfectly valid state.
+    /// </summary>
+    private static async Task<int> ScheduledListAsync()
+    {
+        var pending = await ScheduledTaskLister.ListAsync();
+        if (pending.Count == 0)
+        {
+            Console.WriteLine("No pending Psst tasks.");
+            Console.WriteLine();
+            Console.WriteLine("Schedule one with:");
+            Console.WriteLine("  psst sms <to> \"<message>\" --schedule 10:30am");
+            Console.WriteLine("  psst sms <to> \"<message>\" --repeat 3 --every 5m   # implicit `--schedule now`");
+            return 0;
+        }
+
+        Console.WriteLine($"Pending Psst tasks ({pending.Count}):");
+        Console.WriteLine();
+        foreach (var t in pending)
+        {
+            var fire = (t.NextRunTime ?? t.FireTimeFromSidecar)?.ToString("yyyy-MM-dd HH:mm")
+                       ?? "<unknown>";
+            Console.WriteLine($"  ⏰ {fire}   {t.TaskName}");
+            if (t.Metadata is not null)
+            {
+                Console.WriteLine($"     → {t.Metadata.Recipient}: \"{Truncate(t.Metadata.Message, 60)}\"");
+                if (t.Metadata.Repeat > 1)
+                {
+                    var iv = TimeSpan.FromSeconds(t.Metadata.IntervalSeconds);
+                    Console.WriteLine($"     ↻ {t.Metadata.Repeat} sends every {DurationParser.Format(iv)}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"     · launcher: {t.LauncherPath}");
+            }
+        }
+        Console.WriteLine();
+        Console.WriteLine("Cancel one:  psst scheduled cancel <task-name>");
+        Console.WriteLine("Cancel all:  psst scheduled clear");
+        return 0;
+    }
+
+    /// <summary>Cancel a single task by name.</summary>
+    private static Task<int> ScheduledCancelAsync(string[] args)
+    {
+        if (args.Length != 1)
+        {
+            Console.Error.WriteLine("usage: psst scheduled cancel <task-name>");
+            Console.Error.WriteLine("       (run `psst scheduled` to see task names)");
+            return Task.FromResult(1);
+        }
+        var taskName = args[0];
+        var error = ScheduledTaskLister.Cancel(taskName);
+        if (error is not null)
+        {
+            Console.Error.WriteLine($"error: {error}");
+            return Task.FromResult(1);
+        }
+        Console.WriteLine($"cancelled '{taskName}'");
+        return Task.FromResult(0);
+    }
+
+    /// <summary>
+    /// Cancel every pending Psst task. Loud about which tasks were
+    /// dropped — silent mass-cancel is a footgun.
+    /// </summary>
+    private static async Task<int> ScheduledClearAsync()
+    {
+        var pending = await ScheduledTaskLister.ListAsync();
+        if (pending.Count == 0)
+        {
+            Console.WriteLine("No pending Psst tasks to clear.");
+            return 0;
+        }
+        var failures = 0;
+        foreach (var t in pending)
+        {
+            var err = ScheduledTaskLister.Cancel(t.TaskName);
+            if (err is null)
+            {
+                Console.WriteLine($"  ✓ cancelled {t.TaskName}");
+            }
+            else
+            {
+                Console.Error.WriteLine($"  ✗ {t.TaskName}: {err}");
+                failures++;
+            }
+        }
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static int ScheduledUsage(string sub)
+    {
+        Console.Error.WriteLine($"unknown scheduled subcommand: {sub}");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Usage:");
+        Console.Error.WriteLine("  psst scheduled [list]               List pending Psst tasks");
+        Console.Error.WriteLine("  psst scheduled cancel <task-name>   Cancel one task");
+        Console.Error.WriteLine("  psst scheduled clear                Cancel every pending Psst task");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("`pending` is an alias for `scheduled`.");
+        return 1;
+    }
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..(max - 1)] + "…";
 
     private static async Task Notify(PsstConfiguration config, string message, bool silent)
     {
@@ -440,20 +815,34 @@ public sealed class PsstCli
         Console.WriteLine("psst — MindAttic.Psst CLI");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  [--silent] -- <command> [args...]  Run a command. Play Psst + SMS when it exits.");
-        Console.WriteLine("  [--silent] test [message]          Fire a notification right now.");
-        Console.WriteLine("  ping                               Show which SMS transports are configured.");
-        Console.WriteLine("  sound                              Just play the Psst sound.");
-        Console.WriteLine("  contacts [list|add|rm]             Manage the contact book.");
-        Console.WriteLine("  sms <name-or-phone> <message...>   Send a one-off SMS via the email-fanout chain.");
+        Console.WriteLine("  [--silent] -- <command> [args...]   Run a command. Play Psst + SMS when it exits.");
+        Console.WriteLine("  [--silent] test [message]           Fire a notification right now.");
+        Console.WriteLine("  ping                                Show which SMS transports are configured.");
+        Console.WriteLine("  sound                               Just play the Psst sound.");
+        Console.WriteLine("  contacts [list|add|rm]              Manage the contact book.");
+        Console.WriteLine("  sms [flags] <name-or-phone> <message...>");
+        Console.WriteLine("                                      Send a one-off SMS via the email-fanout chain.");
+        Console.WriteLine("  scheduled / pending [list|cancel|clear]");
+        Console.WriteLine("                                      Inspect / cancel pending scheduled sends.");
         Console.WriteLine();
-        Console.WriteLine("Flags:");
+        Console.WriteLine("Global flags:");
         Console.WriteLine("  --silent   Skip the audio cue. Place before the subcommand.");
+        Console.WriteLine();
+        Console.WriteLine("`sms` flags (may appear anywhere among the sms args):");
+        Console.WriteLine("  --repeat N                  Send the message N times total. Default 1.");
+        Console.WriteLine("  --interval D / --every D    Delay between repeats. D = 30s | 5m | 2h | 1d.");
+        Console.WriteLine("                              Required whenever --repeat > 1.");
+        Console.WriteLine("  --schedule T / --start T    Defer first send to local time T via Task Scheduler.");
+        Console.WriteLine("                              T = 10:30am | 2:30pm | 10:30 | 22:30 (next occurrence).");
         Console.WriteLine();
         Console.WriteLine("Examples:");
         Console.WriteLine("  psst -- dotnet test");
         Console.WriteLine("  psst -- npm run build");
         Console.WriteLine("  psst --silent test \"deploy finished\"");
+        Console.WriteLine("  psst sms jordan \"MFE.\"");
+        Console.WriteLine("  psst sms jordan \"ping\" --repeat 12 --every 5m");
+        Console.WriteLine("  psst sms jordan \"good morning\" --schedule 10:30am");
+        Console.WriteLine("  psst sms jordan \"standup\" --start 9:00am --repeat 5 --every 1m");
         Console.WriteLine();
         Console.WriteLine("Credentials come from the shared MindAttic.Vault chain (User Secrets / env vars).");
         Console.WriteLine("Section: MindAttic:Vault:Notifications.");
