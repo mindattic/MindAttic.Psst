@@ -7,8 +7,16 @@ using MindAttic.Psst.Configuration;
 
 /// <summary>
 /// Sends SMS via carrier email-to-SMS gateways (e.g. <c>5555550100@vtext.com</c>
-/// for Verizon, <c>@txt.att.net</c> for AT&amp;T). Fallback when Twilio is not
-/// configured; reliability varies by carrier and may carry per-day caps.
+/// for Verizon, <c>@txt.att.net</c> for AT&amp;T). Used as the primary
+/// transport in environments where A2P 10DLC registration is impractical,
+/// since the wrong-carrier gateways silently drop and only the recipient's
+/// real carrier actually delivers.
+/// <para>
+/// The recipient string is parsed as a comma-separated list, so a single
+/// notification can fan out across multiple carrier domains in one SMTP
+/// session. The send is considered successful when at least one recipient
+/// accepts the message.
+/// </para>
 /// <para>
 /// Uses MailKit rather than the obsolete <see cref="System.Net.Mail.SmtpClient"/>.
 /// MailKit picks the right TLS mode (STARTTLS on 587, implicit TLS on 465).
@@ -29,11 +37,12 @@ public sealed class EmailSmsClient : ISmsClient
 
     public async Task<SmsResult> SendAsync(string message, CancellationToken cancellationToken = default)
     {
-        var mail = new MimeMessage();
-        mail.From.Add(MailboxAddress.Parse(_settings.From));
-        mail.To.Add(MailboxAddress.Parse(_toEmailGateway));
-        mail.Subject = string.Empty; // many SMS gateways strip or prepend the subject
-        mail.Body = new TextPart("plain") { Text = message };
+        var recipients = _toEmailGateway
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
+        if (recipients.Length == 0)
+            return new SmsResult(false, TransportName, "no recipient addresses configured");
 
         // 465 is implicit TLS; 587 (and everything else) is STARTTLS.
         var secure = _settings.SmtpPort == 465
@@ -41,13 +50,54 @@ public sealed class EmailSmsClient : ISmsClient
             : SecureSocketOptions.StartTls;
 
         using var smtp = new SmtpClient();
+        // OCSP/CRL revocation checks routinely fail on Windows machines behind
+        // corporate proxies or with slow upstream responders, surfacing as
+        // "The revocation function was unable to check revocation for the
+        // certificate." The chain itself still validates against the local
+        // trust store — we only skip the freshness check.
+        smtp.CheckCertificateRevocation = false;
+
         try
         {
             await smtp.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secure, cancellationToken);
             await smtp.AuthenticateAsync(_settings.Username, _settings.Password, cancellationToken);
-            await smtp.SendAsync(mail, cancellationToken);
+
+            var succeeded = new List<string>();
+            var failed = new List<string>();
+            foreach (var to in recipients)
+            {
+                try
+                {
+                    var mail = new MimeMessage();
+                    mail.From.Add(MailboxAddress.Parse(_settings.From));
+                    mail.To.Add(MailboxAddress.Parse(to));
+                    // Deliberately leave Subject unset. Setting it to "" emits an
+                    // empty `Subject:` header that several gateways render as
+                    // "/ /" dividers around the body; omitting it entirely
+                    // produces a cleaner SMS on the receiving phone.
+                    mail.Body = new TextPart("plain") { Text = message };
+                    await smtp.SendAsync(mail, cancellationToken);
+                    succeeded.Add(to);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    failed.Add($"{to}: {Truncate(ex.Message, 120)}");
+                }
+            }
+
             await smtp.DisconnectAsync(quit: true, cancellationToken);
-            return new SmsResult(true, TransportName, $"sent to {_toEmailGateway}");
+
+            if (succeeded.Count == 0)
+                return new SmsResult(false, TransportName, $"all {recipients.Length} recipients failed — {string.Join("; ", failed)}");
+
+            var detail = $"sent to {succeeded.Count}/{recipients.Length} ({string.Join(", ", succeeded)})";
+            if (failed.Count > 0)
+                detail += $"; failed: {string.Join("; ", failed)}";
+            return new SmsResult(true, TransportName, detail);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -56,9 +106,13 @@ public sealed class EmailSmsClient : ISmsClient
         catch (Exception ex)
         {
             // MailKit surfaces a wide tree (SmtpCommandException,
-            // AuthenticationException, IOException, …). Lump them all into
-            // a transport failure with the original message.
+            // AuthenticationException, IOException, …). Connection-level
+            // failures bubble out here; per-recipient failures are aggregated
+            // above so one bad gateway doesn't doom the rest.
             return new SmsResult(false, TransportName, ex.Message);
         }
     }
+
+    private static string Truncate(string s, int max) =>
+        string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max] + "…");
 }

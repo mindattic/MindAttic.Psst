@@ -5,6 +5,8 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using MindAttic.Psst;
 using MindAttic.Psst.Configuration;
+using MindAttic.Psst.Contacts;
+using MindAttic.Psst.Sms;
 using MindAttic.Psst.Sound;
 using MindAttic.Vault.Configuration;
 using MindAttic.Vault.Paths;
@@ -57,11 +59,13 @@ public sealed class PsstCli
         {
             return args[0].ToLowerInvariant() switch
             {
-                "--"     => await WrapAsync(args.Skip(1).ToArray(), psstConfig, silent),
-                "test"   => await TestAsync(args.Skip(1).ToArray(), psstConfig, silent),
-                "ping"   => Ping(psstConfig),
-                "sound"  => await SoundAsync(),
-                _        => UnknownCommand(args[0]),
+                "--"        => await WrapAsync(args.Skip(1).ToArray(), psstConfig, silent),
+                "test"      => await TestAsync(args.Skip(1).ToArray(), psstConfig, silent),
+                "ping"      => Ping(psstConfig),
+                "sound"     => await SoundAsync(),
+                "contacts"  => Contacts(args.Skip(1).ToArray()),
+                "sms"       => await SmsAsync(args.Skip(1).ToArray(), psstConfig),
+                _           => UnknownCommand(args[0]),
             };
         }
         catch (Exception ex)
@@ -166,11 +170,26 @@ public sealed class PsstCli
     /// <summary>Print what transports would fire without sending anything.</summary>
     private static int Ping(PsstConfiguration config)
     {
+        var derivedFanout = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
+        var effectiveEmailRecipients = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derivedFanout);
+
+        var twilioStatus = config.Twilio is null
+            ? "not configured"
+            : (PsstFeatures.TwilioEnabled
+                ? $"configured ({config.Twilio.From} → {config.RecipientPhoneNumber ?? "<missing to>"})"
+                : $"configured but DISABLED via PsstFeatures.TwilioEnabled — {config.Twilio.From} → {config.RecipientPhoneNumber ?? "<missing to>"}");
         Console.WriteLine("MindAttic.Psst — config check");
-        Console.WriteLine($"  Twilio:        {(config.Twilio is null ? "not configured" : "configured (" + config.Twilio.From + " → " + (config.RecipientPhoneNumber ?? "<missing to>") + ")")}");
-        Console.WriteLine($"  Email-to-SMS:  {(config.Email is null ? "not configured" : "configured (" + config.Email.From + " → " + (config.RecipientEmailSmsAddress ?? "<missing toEmail>") + ")")}");
+        Console.WriteLine($"  Twilio:        {twilioStatus}");
+        Console.WriteLine($"  Email-to-SMS:  {(config.Email is null ? "not configured" : "configured (" + config.Email.From + ")")}");
         Console.WriteLine($"  Recipient #:   {config.RecipientPhoneNumber ?? "<unset>"}");
-        Console.WriteLine($"  Recipient @:   {config.RecipientEmailSmsAddress ?? "<unset>"}");
+        Console.WriteLine($"  Recipient @ explicit:  {config.RecipientEmailSmsAddress ?? "<unset>"}");
+        if (effectiveEmailRecipients is not null)
+        {
+            var count = effectiveEmailRecipients.Split(',').Length;
+            Console.WriteLine($"  Effective fanout ({count} gateway{(count == 1 ? "" : "s")}):");
+            foreach (var addr in effectiveEmailRecipients.Split(','))
+                Console.WriteLine($"    · {addr}");
+        }
 
         var settingsPath = PsstConfigurationSources.GetSettingsPath();
         Console.WriteLine();
@@ -224,6 +243,178 @@ public sealed class PsstCli
         return 1;
     }
 
+    /// <summary>Top-level dispatch for the <c>contacts</c> subcommand.</summary>
+    private static int Contacts(string[] args)
+    {
+        var sub = args.Length == 0 ? "list" : args[0].ToLowerInvariant();
+        return sub switch
+        {
+            "list" or "ls"               => ContactsList(),
+            "add"                        => ContactsAdd(args.Skip(1).ToArray()),
+            "rm" or "remove" or "del"    => ContactsRemove(args.Skip(1).ToArray()),
+            _                            => ContactsUsage(sub),
+        };
+    }
+
+    private static int ContactsList()
+    {
+        var book = ContactStore.Load();
+        var path = ContactStore.GetPath();
+        Console.WriteLine($"Contact book ({path}):");
+        if (book.Contacts.Count == 0)
+        {
+            Console.WriteLine("  (empty)");
+            Console.WriteLine();
+            Console.WriteLine("Add one with:  psst contacts add <name> <phone>");
+            return 0;
+        }
+        var nameWidth = book.Contacts.Max(c => c.Name.Length);
+        foreach (var c in book.Contacts)
+            Console.WriteLine($"  {c.Name.PadRight(nameWidth)}  {c.Phone}");
+        return 0;
+    }
+
+    private static int ContactsAdd(string[] args)
+    {
+        if (args.Length != 2)
+        {
+            Console.Error.WriteLine("usage: psst contacts add <name> <phone>");
+            return 1;
+        }
+        var (requestedName, phone) = (args[0], args[1]);
+        var book = ContactStore.Load();
+
+        // Case-insensitive collision check: if "Ryan" exists and the user
+        // adds "ryan", auto-suffix to the first available "<name>N" (N≥2)
+        // and warn. Matches the convention the user wanted: ryan, ryan2,
+        // ryan3, … — first instance unsuffixed.
+        var finalName = NextAvailableContactName(book, requestedName);
+        if (!finalName.Equals(requestedName, StringComparison.Ordinal))
+            Console.Error.WriteLine($"warning: '{requestedName}' already exists (case-insensitive); saving as '{finalName}'");
+
+        try
+        {
+            var added = book.WithAdded(new Contact(finalName, phone));
+            ContactStore.Save(added);
+            Console.WriteLine($"added '{finalName}' → {phone}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Walk numeric suffixes starting at 2 and return the first
+    /// <c>baseName + N</c> that isn't already taken (case-insensitive).
+    /// Returns <paramref name="baseName"/> unchanged when no collision
+    /// exists.
+    /// </summary>
+    private static string NextAvailableContactName(ContactBook book, string baseName)
+    {
+        bool Exists(string name) =>
+            book.Contacts.Any(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        if (!Exists(baseName)) return baseName;
+        var n = 2;
+        while (Exists(baseName + n)) n++;
+        return baseName + n;
+    }
+
+    private static int ContactsRemove(string[] args)
+    {
+        if (args.Length != 1)
+        {
+            Console.Error.WriteLine("usage: psst contacts rm <name>");
+            return 1;
+        }
+        var book = ContactStore.Load();
+        var updated = book.WithoutContact(args[0]);
+        if (updated is null)
+        {
+            Console.Error.WriteLine($"no contact named '{args[0]}'");
+            return 1;
+        }
+        ContactStore.Save(updated);
+        Console.WriteLine($"removed '{args[0]}'");
+        return 0;
+    }
+
+    private static int ContactsUsage(string sub)
+    {
+        Console.Error.WriteLine($"unknown contacts subcommand: {sub}");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Usage:");
+        Console.Error.WriteLine("  psst contacts [list]              List all contacts");
+        Console.Error.WriteLine("  psst contacts add <name> <phone>  Add a contact");
+        Console.Error.WriteLine("  psst contacts rm <name>           Remove a contact");
+        return 1;
+    }
+
+    /// <summary>
+    /// Send a one-off SMS to a contact (by name) or an arbitrary US phone
+    /// number. Uses the same email-to-SMS fanout as the notifier path, with
+    /// the recipient overridden for this send only — no configured `to`
+    /// fallback, no audio cue.
+    /// </summary>
+    private static async Task<int> SmsAsync(string[] args, PsstConfiguration config)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("usage: psst sms <name-or-phone> <message...>");
+            return 1;
+        }
+        var recipient = args[0];
+        var message = string.Join(' ', args.Skip(1));
+
+        var book = ContactStore.Load();
+        var contact = book.Find(recipient);
+
+        string phone;
+        string label;
+        if (contact is not null)
+        {
+            phone = contact.Phone;
+            label = $"{contact.Name} ({contact.Phone})";
+        }
+        else
+        {
+            var digits = CarrierGateways.NormalizeTo10Digits(recipient);
+            if (digits is null)
+            {
+                Console.Error.WriteLine($"'{recipient}' is not a known contact and doesn't look like a US phone number.");
+                Console.Error.WriteLine("Add a contact with:  psst contacts add <name> <phone>");
+                return 1;
+            }
+            phone = "+1" + digits;
+            label = phone;
+        }
+
+        if (config.Email is null)
+        {
+            Console.Error.WriteLine("email transport is not configured — can't send.");
+            Console.Error.WriteLine("Run `psst ping` to see what's wired up.");
+            return 1;
+        }
+
+        // Replace just the recipient phone for this send; null out any
+        // explicit `toEmail` so the fanout is purely the override number's.
+        var overridden = config with
+        {
+            RecipientPhoneNumber = phone,
+            RecipientEmailSmsAddress = null,
+        };
+
+        var notifier = new PsstNotifier(overridden);
+        var result = await notifier.NotifyAsync(message, silent: true);
+        Console.WriteLine($"→ {label}: {message}");
+        foreach (var a in result.SmsAttempts)
+            Console.WriteLine($"  {(a.Success ? "✓" : "✗")} {a.Transport}: {a.Detail}");
+        return result.AnySmsSent ? 0 : 1;
+    }
+
     private static async Task Notify(PsstConfiguration config, string message, bool silent)
     {
         var notifier = new PsstNotifier(config);
@@ -253,6 +444,8 @@ public sealed class PsstCli
         Console.WriteLine("  [--silent] test [message]          Fire a notification right now.");
         Console.WriteLine("  ping                               Show which SMS transports are configured.");
         Console.WriteLine("  sound                              Just play the Psst sound.");
+        Console.WriteLine("  contacts [list|add|rm]             Manage the contact book.");
+        Console.WriteLine("  sms <name-or-phone> <message...>   Send a one-off SMS via the email-fanout chain.");
         Console.WriteLine();
         Console.WriteLine("Flags:");
         Console.WriteLine("  --silent   Skip the audio cue. Place before the subcommand.");

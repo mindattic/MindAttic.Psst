@@ -55,8 +55,8 @@ public sealed record PsstConfiguration(
 
         if (twilio is not null && string.IsNullOrWhiteSpace(to))
             errors.Add("twilio is configured but 'to' (recipient phone) is missing");
-        if (email is not null && string.IsNullOrWhiteSpace(toEmail))
-            errors.Add("email is configured but 'toEmail' (recipient gateway address) is missing");
+        if (email is not null && string.IsNullOrWhiteSpace(toEmail) && string.IsNullOrWhiteSpace(to))
+            errors.Add("email is configured but neither 'toEmail' nor 'to' (for carrier auto-fanout) is set");
 
         return new PsstConfiguration(twilio, email, to, toEmail, errors);
     }

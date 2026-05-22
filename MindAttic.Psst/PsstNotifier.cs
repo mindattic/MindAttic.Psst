@@ -7,7 +7,8 @@ using MindAttic.Psst.Sound;
 /// <summary>
 /// Orchestrates the notification pipeline: kicks off the Psst sound and the
 /// SMS dispatch concurrently, then walks the SMS transports in priority order
-/// (Twilio → email-to-SMS) until one succeeds.
+/// (email-to-SMS fanout first, then Twilio when <see cref="PsstFeatures.TwilioEnabled"/>
+/// is set) until one succeeds.
 /// </summary>
 public sealed class PsstNotifier
 {
@@ -73,11 +74,19 @@ public sealed class PsstNotifier
 
     private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, HttpClient http)
     {
-        if (config.Twilio is not null && !string.IsNullOrWhiteSpace(config.RecipientPhoneNumber))
-            yield return new TwilioSmsClient(http, config.Twilio, config.RecipientPhoneNumber);
+        // Email first: no carrier-registration gate. Recipients = explicit
+        // `toEmail` (if any) ∪ auto-fanout derived from `to`'s 10-digit form
+        // across every known US carrier gateway. Wrong-carrier gateways
+        // silently drop; the recipient's real carrier delivers.
+        var derived = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
+        var combined = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derived);
+        if (config.Email is not null && !string.IsNullOrWhiteSpace(combined))
+            yield return new EmailSmsClient(config.Email, combined);
 
-        if (config.Email is not null && !string.IsNullOrWhiteSpace(config.RecipientEmailSmsAddress))
-            yield return new EmailSmsClient(config.Email, config.RecipientEmailSmsAddress);
+        if (PsstFeatures.TwilioEnabled
+            && config.Twilio is not null
+            && !string.IsNullOrWhiteSpace(config.RecipientPhoneNumber))
+            yield return new TwilioSmsClient(http, config.Twilio, config.RecipientPhoneNumber);
     }
 }
 
