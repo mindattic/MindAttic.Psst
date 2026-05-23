@@ -1,6 +1,7 @@
 namespace MindAttic.Psst.Contacts;
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using MindAttic.Psst.Configuration;
 
 /// <summary>
@@ -14,10 +15,15 @@ using MindAttic.Psst.Configuration;
 /// {
 ///   "contacts": [
 ///     { "name": "Ryan",  "phone": "+19203764617" },
-///     { "name": "Alice", "phone": "+15551234567" }
+///     { "name": "Alice", "phone": "+15551234567", "defaultVia": "twilio" }
 ///   ]
 /// }
 /// </code>
+/// <para>
+/// <c>defaultVia</c> is optional and serialized as the lowercase
+/// <see cref="PsstVia"/> name (<c>"twilio"</c> or <c>"email"</c>); omitted
+/// or null means "no per-contact preference."
+/// </para>
 /// </summary>
 public static class ContactStore
 {
@@ -26,6 +32,14 @@ public static class ContactStore
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters =
+        {
+            // Serialize PsstVia as lowercase string ("twilio"/"email") so
+            // the on-disk schema stays human-editable and matches the
+            // --via CLI flag's accepted values.
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+        },
     };
 
     /// <summary>Full path to <c>%APPDATA%\MindAttic\Psst\contacts.json</c>.</summary>

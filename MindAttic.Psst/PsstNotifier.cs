@@ -6,9 +6,11 @@ using MindAttic.Psst.Sound;
 
 /// <summary>
 /// Orchestrates the notification pipeline: kicks off the Psst sound and the
-/// SMS dispatch concurrently, then walks the SMS transports in priority order
-/// (email-to-SMS fanout first, then Twilio when <see cref="PsstFeatures.TwilioEnabled"/>
-/// is set) until one succeeds.
+/// SMS dispatch concurrently, then dispatches the message through the
+/// transport selected by <see cref="PsstVia"/> (email-to-SMS by default;
+/// Twilio when explicitly requested and <see cref="PsstFeatures.TwilioEnabled"/>
+/// is on). One transport per send — no implicit fallback chain, since the
+/// caller has already decided which path to take.
 /// </summary>
 public sealed class PsstNotifier
 {
@@ -21,8 +23,8 @@ public sealed class PsstNotifier
     private readonly IReadOnlyList<ISmsClient> _clients;
     private readonly Func<CancellationToken, Task<PsstPlayResult>> _playSound;
 
-    public PsstNotifier(PsstConfiguration config, HttpClient? http = null)
-        : this(BuildClients(config, http ?? SharedHttp.Value), PsstSoundPlayer.PlayAsync)
+    public PsstNotifier(PsstConfiguration config, PsstVia via = PsstVia.Email, HttpClient? http = null)
+        : this(BuildClients(config, http ?? SharedHttp.Value, via), PsstSoundPlayer.PlayAsync)
     {
     }
 
@@ -72,21 +74,35 @@ public sealed class PsstNotifier
         return attempts;
     }
 
-    private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, HttpClient http)
+    private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, HttpClient http, PsstVia via)
     {
-        // Email first: no carrier-registration gate. Recipients = explicit
-        // `toEmail` (if any) ∪ auto-fanout derived from `to`'s 10-digit form
-        // across every known US carrier gateway. Wrong-carrier gateways
-        // silently drop; the recipient's real carrier delivers.
-        var derived = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
-        var combined = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derived);
-        if (config.Email is not null && !string.IsNullOrWhiteSpace(combined))
-            yield return new EmailSmsClient(config.Email, combined);
+        // Exactly one transport per send — the caller has already resolved
+        // which one via the --via flag / PSST_VIA env var / per-contact
+        // default precedence (see PsstViaResolver). When the requested
+        // transport isn't wired up (missing creds, feature-gated off, no
+        // recipient), this returns an empty enumerable and DispatchSmsAsync
+        // reports "no SMS transport configured" upstream.
+        switch (via)
+        {
+            case PsstVia.Twilio:
+                if (PsstFeatures.TwilioEnabled
+                    && config.Twilio is not null
+                    && !string.IsNullOrWhiteSpace(config.RecipientPhoneNumber))
+                    yield return new TwilioSmsClient(http, config.Twilio, config.RecipientPhoneNumber);
+                break;
 
-        if (PsstFeatures.TwilioEnabled
-            && config.Twilio is not null
-            && !string.IsNullOrWhiteSpace(config.RecipientPhoneNumber))
-            yield return new TwilioSmsClient(http, config.Twilio, config.RecipientPhoneNumber);
+            case PsstVia.Email:
+            default:
+                // Recipients = explicit `toEmail` (if any) ∪ auto-fanout
+                // derived from `to`'s 10-digit form across every known US
+                // carrier gateway. Wrong-carrier gateways silently drop;
+                // the recipient's real carrier delivers.
+                var derived = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
+                var combined = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derived);
+                if (config.Email is not null && !string.IsNullOrWhiteSpace(combined))
+                    yield return new EmailSmsClient(config.Email, combined);
+                break;
+        }
     }
 }
 

@@ -7,9 +7,11 @@ using MindAttic.Psst.Sms;
 /// (case-insensitive); <see cref="Phone"/> is whatever digit-normalizable
 /// shape the user typed — normalization happens at send time via
 /// <see cref="CarrierGateways.NormalizeTo10Digits"/>, so the source string
-/// is preserved as written.
+/// is preserved as written. <see cref="DefaultVia"/> is the preferred SMS
+/// transport for this contact (<c>null</c> = no preference, fall through to
+/// env var / project default per <see cref="PsstViaResolver"/>).
 /// </summary>
-public sealed record Contact(string Name, string Phone);
+public sealed record Contact(string Name, string Phone, PsstVia? DefaultVia = null);
 
 /// <summary>
 /// Immutable, in-memory view of the contact list. Use <see cref="ContactStore"/>

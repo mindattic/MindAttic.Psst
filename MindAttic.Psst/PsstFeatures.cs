@@ -8,24 +8,19 @@ namespace MindAttic.Psst;
 public static class PsstFeatures
 {
     /// <summary>
-    /// Gate for the Twilio SMS transport. Twilio credentials still resolve
-    /// from the Vault as normal; this flag just decides whether the
-    /// notifier actually instantiates the Twilio client.
+    /// Gate for the Twilio SMS transport. When <c>true</c>, Twilio is
+    /// available as a selectable transport via <c>--via twilio</c> /
+    /// <c>PSST_VIA=twilio</c> / a per-contact default; when <c>false</c>, the
+    /// notifier never instantiates the Twilio client regardless of what the
+    /// user requests. Default project transport stays email-to-SMS either way
+    /// (see <see cref="PsstVia"/> precedence in <see cref="PsstViaResolver"/>).
     /// <para>
-    /// Disabled because the configured Twilio sender number is a US local
-    /// 10-digit long code that is not registered to an A2P 10DLC Brand +
-    /// Campaign. US carriers silently drop every message from an
-    /// unregistered LC with error 30034 — Twilio's API still returns
-    /// <c>queued</c>, so the chain happily declares victory while nothing
-    /// actually lands on the recipient's phone. Email-to-SMS fanout
-    /// bypasses this entirely.
-    /// </para>
-    /// <para>
-    /// Flip back to <c>true</c> after either (a) completing A2P 10DLC
-    /// registration in the Twilio Console (Messaging → Regulatory
-    /// Compliance) or (b) porting the sender to a Toll-Free number with
-    /// Toll-Free Verification approved.
+    /// Enabled: the configured Twilio sender number is registered to an A2P
+    /// 10DLC Brand + Campaign (Twilio Console → Messaging → Regulatory
+    /// Compliance). Until the registration moves to Approved, US carriers
+    /// will silently drop messages with error 30034 even though Twilio's
+    /// API returns <c>queued</c>. Email-to-SMS fanout bypasses this entirely.
     /// </para>
     /// </summary>
-    public const bool TwilioEnabled = false;
+    public const bool TwilioEnabled = true;
 }
