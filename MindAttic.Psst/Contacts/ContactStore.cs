@@ -48,22 +48,38 @@ public static class ContactStore
 
     /// <summary>
     /// Read the contact book from disk. Returns <see cref="ContactBook.Empty"/>
-    /// when the file doesn't exist or fails to parse; the CLI surfaces the
-    /// file path in its output so users can hand-fix a malformed file.
+    /// when the file doesn't exist or fails to parse — callers that need to
+    /// distinguish "no file" from "broken file" should use <see cref="TryLoad"/>.
     /// </summary>
-    public static ContactBook Load()
+    public static ContactBook Load() => TryLoad().Book;
+
+    /// <summary>
+    /// Outcome of a contacts.json read. <see cref="Book"/> is always populated
+    /// (falls back to <see cref="ContactBook.Empty"/> on missing/broken file);
+    /// <see cref="Error"/> is non-null only when the file existed but failed
+    /// to parse — letting the CLI surface "your contacts.json is broken"
+    /// instead of silently pretending the user has no contacts.
+    /// </summary>
+    public sealed record LoadResult(ContactBook Book, string? Error);
+
+    /// <summary>
+    /// Read the contact book and report whether parsing the on-disk file
+    /// failed. Missing file is <em>not</em> an error (it's the empty-state
+    /// case); only malformed JSON or I/O failure populates <see cref="LoadResult.Error"/>.
+    /// </summary>
+    public static LoadResult TryLoad()
     {
         var path = GetPath();
-        if (!File.Exists(path)) return ContactBook.Empty;
+        if (!File.Exists(path)) return new LoadResult(ContactBook.Empty, null);
         try
         {
             var json = File.ReadAllText(path);
             var doc = JsonSerializer.Deserialize<ContactsFile>(json, JsonOptions);
-            return new ContactBook(doc?.Contacts ?? new List<Contact>());
+            return new LoadResult(new ContactBook(doc?.Contacts ?? new List<Contact>()), null);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return ContactBook.Empty;
+            return new LoadResult(ContactBook.Empty, $"could not read {path}: {ex.Message}");
         }
     }
 

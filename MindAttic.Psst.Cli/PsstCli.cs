@@ -50,13 +50,22 @@ public sealed class PsstCli
             return 0;
         }
 
-        // Pull off a leading --silent so we don't have to repeat parsing per command.
+        // Strip --silent from anywhere among the leading args. Historically
+        // we only accepted it as the very first token; users who typed
+        // `psst test --silent "msg"` got it silently swallowed into the
+        // message body. Stop short of the `--` argv divider so wrapped
+        // commands receive their own `--silent` (if any) intact.
         var silent = false;
-        if (args.Length > 0 && args[0] == "--silent")
+        var filtered = new List<string>(args.Length);
+        var sawArgvDivider = false;
+        foreach (var a in args)
         {
-            silent = true;
-            args = args.Skip(1).ToArray();
+            if (sawArgvDivider) { filtered.Add(a); continue; }
+            if (a == "--")     { sawArgvDivider = true; filtered.Add(a); continue; }
+            if (a == "--silent") { silent = true; continue; }
+            filtered.Add(a);
         }
+        args = filtered.ToArray();
 
         if (args.Length == 0)
         {
@@ -143,6 +152,14 @@ public sealed class PsstCli
         for (var i = 1; i < commandArgs.Length; i++)
             psi.ArgumentList.Add(commandArgs[i]);
 
+        // Suppress the default Ctrl-C terminate-immediately handler so we
+        // stay alive long enough to notify when the user cancels. The child
+        // process is in the same console process group and receives the same
+        // Ctrl-C event, so it'll exit on its own; we just need to keep
+        // running until its WaitForExitAsync returns.
+        ConsoleCancelEventHandler cancelHandler = (_, e) => e.Cancel = true;
+        Console.CancelKeyPress += cancelHandler;
+
         var sw = Stopwatch.StartNew();
         int exitCode;
         try
@@ -155,20 +172,40 @@ public sealed class PsstCli
         catch (Exception ex)
         {
             sw.Stop();
+            Console.CancelKeyPress -= cancelHandler;
             var failMsg = $"psst: '{psi.FileName}' failed to start — {ex.Message}";
             await Notify(config, failMsg, silent);
             Console.Error.WriteLine(failMsg);
             return 2;
         }
         sw.Stop();
+        Console.CancelKeyPress -= cancelHandler;
 
-        var status = exitCode == 0 ? "OK" : $"FAIL (exit {exitCode})";
+        var status = exitCode == 0 ? "OK" : $"FAIL ({DescribeExitCode(exitCode)})";
         var elapsed = FormatElapsed(sw.Elapsed);
         var message = $"psst: {psi.FileName} — {status} in {elapsed}";
 
         await Notify(config, message, silent);
         return exitCode;
     }
+
+    /// <summary>
+    /// Map well-known Windows NTSTATUS exit codes to readable labels. Falls
+    /// back to <c>exit N</c> for unknown codes. Keeps the auto-notification
+    /// from showing things like <c>FAIL (exit -1073741510)</c> when the
+    /// user just hit Ctrl-C.
+    /// </summary>
+    private static string DescribeExitCode(int exitCode) => exitCode switch
+    {
+        unchecked((int)0xC000013A) => "Ctrl-C",            // STATUS_CONTROL_C_EXIT
+        unchecked((int)0xC0000005) => "access violation",  // STATUS_ACCESS_VIOLATION
+        unchecked((int)0xC000001D) => "illegal instruction",
+        unchecked((int)0xC0000094) => "divide by zero",
+        unchecked((int)0xC00000FD) => "stack overflow",
+        unchecked((int)0xC0000409) => "stack buffer overrun",
+        unchecked((int)0xC0000374) => "heap corruption",
+        _                          => $"exit {exitCode}",
+    };
 
     /// <summary>Fire a notification right now with a fixed or user-supplied message.</summary>
     private static async Task<int> TestAsync(string[] args, PsstConfiguration config, bool silent)
@@ -271,8 +308,11 @@ public sealed class PsstCli
 
     private static int ContactsList()
     {
-        var book = ContactStore.Load();
+        var load = ContactStore.TryLoad();
+        var book = load.Book;
         var path = ContactStore.GetPath();
+        if (load.Error is not null)
+            Console.Error.WriteLine($"warning: {load.Error}");
         Console.WriteLine($"Contact book ({path}):");
         if (book.Contacts.Count == 0)
         {
@@ -328,7 +368,14 @@ public sealed class PsstCli
         if (viaArg is not null && PsstViaResolver.TryParse(viaArg, out var parsedVia))
             defaultVia = parsedVia;
 
-        var book = ContactStore.Load();
+        var addLoad = ContactStore.TryLoad();
+        if (addLoad.Error is not null)
+        {
+            Console.Error.WriteLine($"error: {addLoad.Error}");
+            Console.Error.WriteLine("Refusing to add — fix or remove contacts.json first to avoid clobbering existing entries.");
+            return 1;
+        }
+        var book = addLoad.Book;
 
         // Case-insensitive collision check: if "Ryan" exists and the user
         // adds "ryan", auto-suffix to the first available "<name>N" (N≥2)
@@ -377,7 +424,13 @@ public sealed class PsstCli
             Console.Error.WriteLine("usage: psst contacts rm <name>");
             return 1;
         }
-        var book = ContactStore.Load();
+        var rmLoad = ContactStore.TryLoad();
+        if (rmLoad.Error is not null)
+        {
+            Console.Error.WriteLine($"error: {rmLoad.Error}");
+            return 1;
+        }
+        var book = rmLoad.Book;
         var updated = book.WithoutContact(args[0]);
         if (updated is null)
         {
@@ -474,7 +527,10 @@ public sealed class PsstCli
         // Recipient resolution: contact-book lookup first (case-insensitive),
         // falling back to bare US phone-number parsing. Anything that isn't
         // either is a hard error — we don't want to silently send to a typo.
-        var book = ContactStore.Load();
+        var smsLoad = ContactStore.TryLoad();
+        if (smsLoad.Error is not null)
+            Console.Error.WriteLine($"warning: {smsLoad.Error}");
+        var book = smsLoad.Book;
         var contact = book.Find(recipient);
 
         string phone;
@@ -562,7 +618,10 @@ public sealed class PsstCli
             RecipientPhoneNumber = phone,
             RecipientEmailSmsAddress = null,
         };
-        var notifier = new PsstNotifier(overridden, via);
+        // `await using` so the underlying email transport gets a chance to
+        // QUIT its SMTP session at the end of a --repeat loop instead of
+        // having the OS yank the socket at process exit.
+        await using var notifier = new PsstNotifier(overridden, via);
 
         var allSucceeded = true;
         for (var i = 0; i < parse.Repeat; i++)
@@ -884,7 +943,7 @@ public sealed class PsstCli
         // flag and no contact context — it just honors PSST_VIA when set,
         // else the project default (email).
         var via = PsstViaResolver.Resolve(cliFlagValue: null, contactDefault: null);
-        var notifier = new PsstNotifier(config, via);
+        await using var notifier = new PsstNotifier(config, via);
         var result = await notifier.NotifyAsync(message, silent: silent);
         Console.WriteLine(message);
         if (result.SoundPlayed) Console.WriteLine("  ♪ played Psst");

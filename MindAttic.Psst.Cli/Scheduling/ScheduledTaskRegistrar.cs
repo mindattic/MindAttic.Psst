@@ -2,6 +2,7 @@ namespace MindAttic.Psst.Cli.Scheduling;
 
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -144,6 +145,14 @@ public static class ScheduledTaskRegistrar
 
         var sb = new StringBuilder();
         sb.AppendLine("@echo off");
+        // Switch the active code page to UTF-8 before the args reach
+        // psst.exe. Without this, cmd.exe parses the .cmd file as the
+        // OEM code page (typically CP437 / CP1252), turning any non-ASCII
+        // character in the message text into mojibake by the time it
+        // reaches the SMS payload. The `>nul` suppresses chcp's noisy
+        // "Active code page: 65001" status line so the launcher stays
+        // quiet under Task Scheduler.
+        sb.AppendLine("chcp 65001 >nul");
         // Mark this invocation as scheduler-spawned so psst skips the
         // "implicit --schedule now when --interval is given" logic.
         // Without this, the deferred fire would just register another
@@ -222,12 +231,14 @@ public static class ScheduledTaskRegistrar
         psi.ArgumentList.Add("/Create");
         psi.ArgumentList.Add("/TN"); psi.ArgumentList.Add(taskName);
         psi.ArgumentList.Add("/SC"); psi.ArgumentList.Add("ONCE");
-        // schtasks expects the locale's short-date and 24-hour time formats.
-        // Using invariant MM/dd/yyyy + HH:mm matches en-US (the dominant
-        // locale on this codebase's target machines); if this ever needs to
-        // run elsewhere we can switch to CurrentCulture or pass UTC instead.
-        psi.ArgumentList.Add("/SD"); psi.ArgumentList.Add(fireTime.ToString("MM/dd/yyyy"));
-        psi.ArgumentList.Add("/ST"); psi.ArgumentList.Add(fireTime.ToString("HH:mm"));
+        // schtasks parses /SD using the *current user's* Windows short-date
+        // pattern, not en-US. Hard-coding MM/dd/yyyy worked on US machines
+        // and silently failed (or fired on the wrong day) under dd/MM/yyyy
+        // or yyyy-MM-dd locales. Read the actual pattern out of CultureInfo
+        // and let DateTime.ToString render it.
+        var datePattern = CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern;
+        psi.ArgumentList.Add("/SD"); psi.ArgumentList.Add(fireTime.ToString(datePattern, CultureInfo.CurrentCulture));
+        psi.ArgumentList.Add("/ST"); psi.ArgumentList.Add(fireTime.ToString("HH:mm", CultureInfo.InvariantCulture));
         psi.ArgumentList.Add("/TR"); psi.ArgumentList.Add(launcherPath);
         psi.ArgumentList.Add("/F"); // overwrite if a stale task with the same name exists
         // Note: /Z (auto-delete after run) is intentionally omitted because
@@ -239,9 +250,13 @@ public static class ScheduledTaskRegistrar
         {
             using var proc = Process.Start(psi);
             if (proc is null) return "failed to launch schtasks.exe";
-            var stdout = proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
+            // Drain both streams concurrently to avoid the classic
+            // pipe-buffer deadlock when stderr fills before stdout drains.
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
             proc.WaitForExit();
+            var stdout = stdoutTask.GetAwaiter().GetResult();
+            var stderr = stderrTask.GetAwaiter().GetResult();
             if (proc.ExitCode != 0)
             {
                 var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;

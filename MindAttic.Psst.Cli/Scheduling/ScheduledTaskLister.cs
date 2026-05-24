@@ -91,9 +91,13 @@ public static class ScheduledTaskLister
         {
             using var proc = Process.Start(psi);
             if (proc is null) return "failed to launch schtasks.exe";
-            proc.StandardOutput.ReadToEnd();
-            var stderr = proc.StandardError.ReadToEnd();
+            // Drain both streams concurrently — reading them serially can
+            // deadlock when the unread pipe's buffer fills before we get to it.
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
             proc.WaitForExit();
+            stdoutTask.GetAwaiter().GetResult();
+            var stderr = stderrTask.GetAwaiter().GetResult();
             if (proc.ExitCode != 0)
                 return $"schtasks exited {proc.ExitCode}: {stderr.Trim()}";
         }
@@ -178,8 +182,14 @@ public static class ScheduledTaskLister
 
         using var proc = Process.Start(psi);
         if (proc is null) return Array.Empty<SchtasksRow>();
-        var stdout = await proc.StandardOutput.ReadToEndAsync();
+        // Drain both streams concurrently — verbose /Query can produce
+        // enough output to fill a single pipe buffer and deadlock if we
+        // wait on the process before reading both streams.
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
         await proc.WaitForExitAsync();
+        var stdout = await stdoutTask;
+        await stderrTask;
         if (proc.ExitCode != 0) return Array.Empty<SchtasksRow>();
 
         var rows = new List<SchtasksRow>();

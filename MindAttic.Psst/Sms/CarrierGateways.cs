@@ -37,11 +37,19 @@ public static class CarrierGateways
     /// <summary>
     /// Strip <paramref name="phoneNumber"/> to its 10-digit US form. Accepts
     /// E.164 (<c>+15551234567</c>), 1-prefixed 11-digit, or already-10-digit
-    /// input. Returns null if the input doesn't normalize to 10 digits.
+    /// input plus the usual punctuation (<c>+</c>, <c>-</c>, <c>(</c>, <c>)</c>,
+    /// dots, whitespace). Returns null if the input doesn't normalize to 10
+    /// digits, OR if the input contains any letter characters — that way
+    /// extension markers like <c>"1 ext 5551234567"</c> don't get silently
+    /// reinterpreted as a valid US number.
     /// </summary>
     public static string? NormalizeTo10Digits(string? phoneNumber)
     {
         if (string.IsNullOrWhiteSpace(phoneNumber)) return null;
+        // Letters never appear in a real phone-number form. Rejecting up
+        // front prevents extension/name/comment text ("ext", "x4", "Bob's
+        // cell: 555-…") from sneaking through the digit-stripper.
+        if (phoneNumber.Any(char.IsLetter)) return null;
         var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
         if (digits.Length == 11 && digits[0] == '1') digits = digits[1..];
         return digits.Length == 10 ? digits : null;

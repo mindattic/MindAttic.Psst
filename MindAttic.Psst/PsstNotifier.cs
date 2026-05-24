@@ -1,5 +1,7 @@
 namespace MindAttic.Psst;
 
+using System.Net.Http.Headers;
+using System.Reflection;
 using MindAttic.Psst.Configuration;
 using MindAttic.Psst.Sms;
 using MindAttic.Psst.Sound;
@@ -12,13 +14,30 @@ using MindAttic.Psst.Sound;
 /// is on). One transport per send — no implicit fallback chain, since the
 /// caller has already decided which path to take.
 /// </summary>
-public sealed class PsstNotifier
+public sealed class PsstNotifier : IAsyncDisposable
 {
     // One process-wide HttpClient. Twilio's hostname/cert is stable enough that
     // the default SocketsHttpHandler lifetime is fine here; we'd only need
     // IHttpClientFactory if we were rotating endpoints frequently.
+    //
+    // Identify Psst in upstream access logs — Twilio support requests this when
+    // chasing carrier-side delivery failures, and the default ".NET/<version>"
+    // is unhelpful.
     private static readonly Lazy<HttpClient> SharedHttp = new(() =>
-        new HttpClient { Timeout = TimeSpan.FromSeconds(15) });
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        // ProductInfoHeaderValue only accepts a strict token grammar for the
+        // version — strip anything beyond digits and dots so a +commit-hash
+        // suffix on InformationalVersion can't throw at startup.
+        var raw = typeof(PsstNotifier).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? typeof(PsstNotifier).Assembly.GetName().Version?.ToString()
+            ?? "0.0.0";
+        var version = new string(raw.TakeWhile(c => char.IsDigit(c) || c == '.').ToArray());
+        if (string.IsNullOrEmpty(version)) version = "0.0.0";
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MindAttic.Psst", version));
+        return http;
+    });
 
     private readonly IReadOnlyList<ISmsClient> _clients;
     private readonly Func<CancellationToken, Task<PsstPlayResult>> _playSound;
@@ -72,6 +91,24 @@ public sealed class PsstNotifier
             if (result.Success) break;
         }
         return attempts;
+    }
+
+    /// <summary>
+    /// Tear down any client that holds an open resource (e.g.
+    /// <see cref="EmailSmsClient"/>'s persistent SMTP session). The shared
+    /// <see cref="HttpClient"/> is process-wide and intentionally not
+    /// disposed here.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var client in _clients)
+        {
+            if (client is IAsyncDisposable ad)
+            {
+                try { await ad.DisposeAsync(); }
+                catch { /* best effort — process is usually exiting */ }
+            }
+        }
     }
 
     private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, HttpClient http, PsstVia via)

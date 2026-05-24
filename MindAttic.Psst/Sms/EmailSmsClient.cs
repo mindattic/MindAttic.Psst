@@ -21,11 +21,20 @@ using MindAttic.Psst.Configuration;
 /// Uses MailKit rather than the obsolete <see cref="System.Net.Mail.SmtpClient"/>.
 /// MailKit picks the right TLS mode (STARTTLS on 587, implicit TLS on 465).
 /// </para>
+/// <para>
+/// The SMTP session is opened lazily on the first <see cref="SendAsync"/>
+/// call and held open for the lifetime of this instance — long-running
+/// <c>--repeat</c> loops amortize TLS handshakes across sends instead of
+/// paying the connect/auth cost every time. If the connection goes idle
+/// long enough for the server to drop it, the next send reconnects
+/// transparently.
+/// </para>
 /// </summary>
-public sealed class EmailSmsClient : ISmsClient
+public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
 {
     private readonly EmailSettings _settings;
     private readonly string _toEmailGateway;
+    private SmtpClient? _smtp;
 
     public string TransportName => "Email-to-SMS";
 
@@ -44,23 +53,9 @@ public sealed class EmailSmsClient : ISmsClient
         if (recipients.Length == 0)
             return new SmsResult(false, TransportName, "no recipient addresses configured");
 
-        // 465 is implicit TLS; 587 (and everything else) is STARTTLS.
-        var secure = _settings.SmtpPort == 465
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTls;
-
-        using var smtp = new SmtpClient();
-        // OCSP/CRL revocation checks routinely fail on Windows machines behind
-        // corporate proxies or with slow upstream responders, surfacing as
-        // "The revocation function was unable to check revocation for the
-        // certificate." The chain itself still validates against the local
-        // trust store — we only skip the freshness check.
-        smtp.CheckCertificateRevocation = false;
-
         try
         {
-            await smtp.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secure, cancellationToken);
-            await smtp.AuthenticateAsync(_settings.Username, _settings.Password, cancellationToken);
+            var smtp = await EnsureConnectedAsync(cancellationToken);
 
             var succeeded = new List<string>();
             var failed = new List<string>();
@@ -89,8 +84,6 @@ public sealed class EmailSmsClient : ISmsClient
                 }
             }
 
-            await smtp.DisconnectAsync(quit: true, cancellationToken);
-
             if (succeeded.Count == 0)
                 return new SmsResult(false, TransportName, $"all {recipients.Length} recipients failed — {string.Join("; ", failed)}");
 
@@ -109,9 +102,76 @@ public sealed class EmailSmsClient : ISmsClient
             // AuthenticationException, IOException, …). Connection-level
             // failures bubble out here; per-recipient failures are aggregated
             // above so one bad gateway doesn't doom the rest.
+            //
+            // Drop the connection so the next send forces a clean reconnect
+            // rather than reusing a half-broken session.
+            await TryDisconnectAsync();
             return new SmsResult(false, TransportName, ex.Message);
         }
     }
+
+    /// <summary>
+    /// Lazily open (or reopen) the SMTP session. Reuses the existing
+    /// connection when it's still alive and authenticated; otherwise
+    /// drops any stale handle and dials in fresh. Long idle gaps between
+    /// repeats are expected and handled transparently.
+    /// </summary>
+    private async Task<SmtpClient> EnsureConnectedAsync(CancellationToken cancellationToken)
+    {
+        if (_smtp is { IsConnected: true, IsAuthenticated: true })
+            return _smtp;
+
+        // Dispose any half-open handle from a prior failed send before
+        // reconnecting — leaks here would accumulate one socket per attempt.
+        await TryDisconnectAsync();
+
+        var smtp = new SmtpClient
+        {
+            // OCSP/CRL revocation checks routinely fail on Windows machines behind
+            // corporate proxies or with slow upstream responders, surfacing as
+            // "The revocation function was unable to check revocation for the
+            // certificate." The chain itself still validates against the local
+            // trust store — we only skip the freshness check.
+            CheckCertificateRevocation = false,
+        };
+
+        // 465 is implicit TLS; 587 (and everything else) is STARTTLS.
+        var secure = _settings.SmtpPort == 465
+            ? SecureSocketOptions.SslOnConnect
+            : SecureSocketOptions.StartTls;
+
+        await smtp.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secure, cancellationToken);
+        await smtp.AuthenticateAsync(_settings.Username, _settings.Password, cancellationToken);
+        _smtp = smtp;
+        return smtp;
+    }
+
+    /// <summary>
+    /// Tear down the persistent SMTP session. Safe to call multiple times.
+    /// Errors are swallowed — by the time we're disconnecting we don't care
+    /// about the why, just that the next send starts clean.
+    /// </summary>
+    private async Task TryDisconnectAsync()
+    {
+        var smtp = _smtp;
+        _smtp = null;
+        if (smtp is null) return;
+        try
+        {
+            if (smtp.IsConnected)
+                await smtp.DisconnectAsync(quit: true);
+        }
+        catch
+        {
+            // best effort
+        }
+        finally
+        {
+            smtp.Dispose();
+        }
+    }
+
+    public async ValueTask DisposeAsync() => await TryDisconnectAsync();
 
     private static string Truncate(string s, int max) =>
         string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max] + "…");
