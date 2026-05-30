@@ -237,15 +237,14 @@ Psst reads from several sources, lowest → highest precedence:
 
 | Source | Path | Notes |
 |---|---|---|
+| Vault file | `%APPDATA%\MindAttic\Notifications\providers.json` | canonical credential store |
 | `.env` fallback | `%APPDATA%\MindAttic\Psst\.env` | KEY=VALUE; outside the repo |
 | `appsettings.json` | `.\appsettings.json` (CWD) | optional, legacy |
 | **settings.json** | `%APPDATA%\MindAttic\Psst\settings.json` | **primary**, outside the repo |
-| User Secrets | per-user store, id `mindattic-vault-shared` | dev convenience |
 | Environment variables | `MindAttic__Vault__Notifications__*` | CI / containers override |
 
-Pick whichever feels right. The two file-based locations under `%APPDATA%`
-keep credentials out of the source tree without needing the `dotnet`
-user-secrets tooling.
+Pick whichever feels right. The file-based locations under `%APPDATA%`
+keep credentials out of the source tree.
 
 #### Option A — `settings.json` (recommended)
 
@@ -281,17 +280,26 @@ MindAttic__Vault__Notifications__to=+15555550101
 
 Anything set in `settings.json` overrides the same key in `.env`.
 
-#### Option C — User Secrets
+#### Option C — Vault file (`providers.json`)
 
-```powershell
-dotnet user-secrets set "MindAttic:Vault:Notifications:twilio:accountSid" "AC..." `
-  --id mindattic-vault-shared
-dotnet user-secrets set "MindAttic:Vault:Notifications:twilio:authToken"  "..." `
-  --id mindattic-vault-shared
-dotnet user-secrets set "MindAttic:Vault:Notifications:twilio:from"       "+15555550100" `
-  --id mindattic-vault-shared
-dotnet user-secrets set "MindAttic:Vault:Notifications:to"                "+15555550101" `
-  --id mindattic-vault-shared
+Create `%APPDATA%\MindAttic\Notifications\providers.json`:
+
+```json
+{
+  "twilio": {
+    "accountSid": "AC...",
+    "authToken":  "...",
+    "from":       "+15555550100"
+  },
+  "email": {
+    "smtpHost": "smtp.example.com",
+    "smtpPort": 587,
+    "username": "user",
+    "password": "***",
+    "from":     "psst@example.com"
+  },
+  "to": "+15555550101"
+}
 ```
 
 #### Option D — Environment variables

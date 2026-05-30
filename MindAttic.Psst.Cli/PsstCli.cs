@@ -107,7 +107,6 @@ public sealed class PsstCli
     ///   </description></item>
     ///   <item><description><c>./appsettings.json</c> from the working directory (optional, legacy).</description></item>
     ///   <item><description><c>%APPDATA%/MindAttic/Psst/settings.json</c> — primary Psst config, lives outside the repo.</description></item>
-    ///   <item><description>User Secrets (shared MindAttic ID) — per-dev convenience.</description></item>
     ///   <item><description>Environment variables — final override, useful for CI / containers.</description></item>
     /// </list>
     /// </summary>
@@ -124,10 +123,7 @@ public sealed class PsstCli
         // 3. Primary settings.json under %APPDATA%\MindAttic\Psst.
         builder.AddJsonFile(PsstConfigurationSources.GetSettingsPath(), optional: true, reloadOnChange: false);
 
-        // 4. User Secrets (dev convenience).
-        builder.AddUserSecrets(VaultConfigurationKeys.SharedUserSecretsId, reloadOnChange: false);
-
-        // 5. Environment variables (highest priority).
+        // 4. Environment variables (highest priority).
         builder.AddEnvironmentVariables();
 
         return builder.Build();
@@ -252,7 +248,6 @@ public sealed class PsstCli
         Console.WriteLine($"  · vault files:   {VaultPaths.RoamingRoot}{Path.DirectorySeparatorChar}<LLM|Brokers>{Path.DirectorySeparatorChar}providers.json");
         Console.WriteLine($"  {SourceMark(File.Exists("appsettings.json"))} appsettings:    .{Path.DirectorySeparatorChar}appsettings.json");
         Console.WriteLine($"  {SourceMark(File.Exists(settingsPath))} settings.json:  {settingsPath}");
-        Console.WriteLine($"  · user secrets:  {VaultConfigurationKeys.SharedUserSecretsId}");
         Console.WriteLine($"  · env vars:      MindAttic__Vault__Notifications__*");
 
         if (config.Errors.Count > 0)
@@ -267,18 +262,19 @@ public sealed class PsstCli
         if (!config.HasAnySmsTransport)
         {
             Console.WriteLine("No SMS transports configured. Pick one approach:");
-            Console.WriteLine($"  • Create {settingsPath}:");
+            Console.WriteLine($"  • Create the canonical Notifications credential file:");
+            Console.WriteLine($"      {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
             Console.WriteLine("      {");
-            Console.WriteLine("        \"MindAttic\": { \"Vault\": { \"Notifications\": {");
-            Console.WriteLine("          \"twilio\": {");
-            Console.WriteLine("            \"accountSid\": \"AC...\", \"authToken\": \"...\", \"from\": \"+15555550100\"");
-            Console.WriteLine("          },");
-            Console.WriteLine("          \"to\": \"+15555550101\"");
-            Console.WriteLine("        } } }");
+            Console.WriteLine("        \"twilio\": {");
+            Console.WriteLine("          \"accountSid\": \"AC...\", \"authToken\": \"...\", \"from\": \"+15555550100\"");
+            Console.WriteLine("        },");
+            Console.WriteLine("        \"email\": {");
+            Console.WriteLine("          \"smtpHost\": \"smtp.example.com\", \"smtpPort\": 587,");
+            Console.WriteLine("          \"username\": \"user\", \"password\": \"***\", \"from\": \"psst@example.com\"");
+            Console.WriteLine("        },");
+            Console.WriteLine("        \"to\": \"+15555550101\"");
             Console.WriteLine("      }");
-            Console.WriteLine("  • Or set via shared User Secrets (works across every MindAttic app):");
-            Console.WriteLine($"      dotnet user-secrets --id {VaultConfigurationKeys.SharedUserSecretsId} \\");
-            Console.WriteLine("          set \"MindAttic:Vault:Notifications:twilio:accountSid\" \"AC...\"");
+            Console.WriteLine($"  • Or place the same settings in {settingsPath} under MindAttic:Vault:Notifications.");
         }
         return 0;
 

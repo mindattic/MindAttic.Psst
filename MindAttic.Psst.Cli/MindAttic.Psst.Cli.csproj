@@ -7,7 +7,6 @@
     <AssemblyName>psst</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>mindattic-vault-shared</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
