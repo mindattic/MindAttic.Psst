@@ -107,7 +107,10 @@ public sealed record EmailSettings(string SmtpHost, int SmtpPort, string Usernam
             return null;
         }
 
-        var port = int.TryParse(s["smtpPort"], out var p) ? p : 587;
+        // Fall back to 587 for anything that isn't a usable TCP port —
+        // unparseable, zero, negative, or above 65535 — so a typo can't push
+        // a nonsense port through to ConnectAsync as a confusing runtime error.
+        var port = int.TryParse(s["smtpPort"], out var p) && p is > 0 and <= 65535 ? p : 587;
         return new EmailSettings(host!, port, user!, pass!, from!);
     }
 }

@@ -33,6 +33,13 @@ using System.Threading.Tasks;
 /// </summary>
 public static class ScheduledTaskRegistrar
 {
+    // Characters that force an argument to be double-quoted in the launcher
+    // .cmd: whitespace and quote (so CommandLineToArgvW keeps the arg intact)
+    // plus cmd.exe metacharacters (so cmd treats them literally rather than as
+    // redirection/piping/grouping/separators).
+    private static readonly char[] CmdSpecialChars = { ' ', '\t', '"', '\n', '\v', '&', '|', '<', '>', '^', '(', ')' };
+
+
     /// <summary>
     /// Outcome of a <see cref="RegisterAsync"/> call. Either the task was
     /// created (<see cref="Success"/> = true and <see cref="TaskName"/>
@@ -159,15 +166,8 @@ public static class ScheduledTaskRegistrar
         // scheduled task instead of actually running the send loop —
         // recursion that never reaches the SMS path.
         sb.AppendLine("set PSST_FROM_SCHEDULE=1");
-        // Run psst with the original argv. Quote the exe path even when
-        // it has no spaces — cheap and removes any ambiguity about where
-        // the exe ends and the args begin.
-        sb.Append('"').Append(psstExePath).Append('"');
-        foreach (var a in psstArgs)
-        {
-            sb.Append(' ').Append(QuoteForWindowsCommandLine(a));
-        }
-        sb.AppendLine();
+        // Run psst with the original argv.
+        sb.AppendLine(BuildInvocationLine(psstExePath, psstArgs));
         sb.AppendLine("set PSST_EXIT=%ERRORLEVEL%");
         // Self-cleanup: delete the scheduled task and the JSON sidecar.
         // Errors are swallowed — the cleanup is best-effort and we don't
@@ -271,17 +271,41 @@ public static class ScheduledTaskRegistrar
     }
 
     /// <summary>
+    /// Build the line that invokes <c>psst.exe</c> inside the launcher
+    /// <c>.cmd</c>. Quotes the exe path and each argument for the
+    /// <c>CommandLineToArgvW</c> parser, then doubles every <c>%</c> so
+    /// cmd.exe's batch percent-expansion — which runs <em>before</em> psst's
+    /// argv parser and which double quotes do <em>not</em> suppress — leaves
+    /// literal percents and <c>%VAR%</c> sequences in the message intact
+    /// instead of eating them or splicing environment variables into the SMS.
+    /// (<c>%%</c> reduces back to a single <c>%</c> on a batch-file line.)
+    /// </summary>
+    internal static string BuildInvocationLine(string psstExePath, string[] psstArgs)
+    {
+        var sb = new StringBuilder();
+        // Quote the exe path even when it has no spaces — cheap, and removes
+        // any ambiguity about where the exe ends and the args begin.
+        sb.Append('"').Append(psstExePath).Append('"');
+        foreach (var a in psstArgs)
+            sb.Append(' ').Append(QuoteForWindowsCommandLine(a));
+        return sb.ToString().Replace("%", "%%");
+    }
+
+    /// <summary>
     /// Quote a single argument using Windows <c>CommandLineToArgvW</c>
     /// rules: surround with double quotes if needed, escape embedded
     /// quotes as <c>\"</c>, and double-up any trailing backslashes that
     /// precede an embedded quote so they don't combine.
     /// </summary>
-    private static string QuoteForWindowsCommandLine(string arg)
+    internal static string QuoteForWindowsCommandLine(string arg)
     {
-        // Args with no whitespace and no quote characters can be passed
-        // through verbatim — adding quotes would still work but produces
-        // noisier cmd files.
-        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '"', '\n', '\v' }) < 0)
+        // Args with nothing the argv parser splits on (whitespace/quotes) and
+        // nothing cmd.exe treats specially can be passed through verbatim.
+        // The cmd metacharacters & | < > ^ ( ) must force quoting: wrapped in
+        // double quotes cmd treats them literally, whereas a bare "a&b" would
+        // otherwise be parsed as the command `a` followed by a separate
+        // command `b`. (Percent is handled separately by %%-doubling above.)
+        if (arg.Length > 0 && arg.IndexOfAny(CmdSpecialChars) < 0)
             return arg;
 
         var sb = new StringBuilder();

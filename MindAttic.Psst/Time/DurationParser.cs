@@ -109,12 +109,20 @@ public static class DurationParser
     /// <list type="bullet">
     ///   <item>30 seconds → <c>30s</c></item>
     ///   <item>5 minutes  → <c>5m</c></item>
-    ///   <item>90 minutes → <c>5400s</c> (not an exact hour count)</item>
+    ///   <item>90 seconds → <c>90s</c> (1m30s isn't a whole minute)</item>
     /// </list>
     /// </summary>
     public static string Format(TimeSpan t)
     {
-        if (t.Ticks < 0) return $"-{Format(-t)}";
+        if (t.Ticks < 0)
+        {
+            // Negate via Ticks, not `-t`: negating TimeSpan.MinValue overflows
+            // long and throws. Clamping the most-negative tick to long.MaxValue
+            // costs a single tick — far below the one-second resolution we
+            // render at — so the formatted string is unaffected.
+            var ticks = t.Ticks == long.MinValue ? long.MaxValue : -t.Ticks;
+            return $"-{Format(TimeSpan.FromTicks(ticks))}";
+        }
 
         // Prefer the largest unit that divides the span evenly so a
         // round-tripped value (Parse → Format) reads naturally.

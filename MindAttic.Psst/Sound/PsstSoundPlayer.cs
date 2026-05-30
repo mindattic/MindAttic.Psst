@@ -84,6 +84,11 @@ public static class PsstSoundPlayer
                 done.TrySetCanceled(cancellationToken);
             });
 
+            // Already cancelled? Don't start playback at all — registering an
+            // already-signaled token fires the callback synchronously above,
+            // so calling Play() here would briefly start the clip only to have
+            // the finally block stop and dispose it (an audible blip).
+            cancellationToken.ThrowIfCancellationRequested();
             output.Play();
             var error = await done.Task;
             if (error is not null)
@@ -115,7 +120,7 @@ public static class PsstSoundPlayer
             if (stream is null)
                 return PsstPlayResult.Fail($"embedded resource '{WavResource}' not found");
 
-            var player = new SoundPlayer(stream);
+            using var player = new SoundPlayer(stream);
             player.PlaySync();
             return PsstPlayResult.Ok("WAV (SoundPlayer)");
         }

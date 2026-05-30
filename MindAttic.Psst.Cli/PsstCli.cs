@@ -144,7 +144,12 @@ public sealed class PsstCli
 
         var psi = new ProcessStartInfo
         {
-            FileName = commandArgs[0],
+            // Resolve through PATH/PATHEXT first. With UseShellExecute=false,
+            // Process.Start only auto-appends ".exe", so a bare "npm"/"yarn"/
+            // "tsc" (which ship as .cmd shims on Windows) fails with "cannot
+            // find the file". Handing CreateProcess the full path — including
+            // the .cmd extension — lets it launch them.
+            FileName = ResolveExecutable(commandArgs[0]),
             UseShellExecute = false,
         };
         // ArgumentList escapes per-arg; avoids the quoting bugs that come from
@@ -1003,11 +1008,59 @@ public sealed class PsstCli
         Console.WriteLine("Section: MindAttic:Vault:Notifications.");
     }
 
+    /// <summary>
+    /// Resolve a wrapped command name to a launchable full path using the same
+    /// PATH × PATHEXT search the shell would. Returns the original string
+    /// unchanged when the input already carries a path/extension or when no
+    /// match is found (so <see cref="Process.Start(ProcessStartInfo)"/> still
+    /// surfaces a sensible "not found" error).
+    /// </summary>
+    internal static string ResolveExecutable(string command)
+    {
+        if (string.IsNullOrEmpty(command)) return command;
+
+        // An explicit path (rooted or containing a separator) is handed through
+        // verbatim — CreateProcess resolves it, and .NET runs a .cmd/.bat when
+        // given a full path with extension.
+        if (Path.IsPathRooted(command)
+            || command.Contains(Path.DirectorySeparatorChar)
+            || command.Contains(Path.AltDirectorySeparatorChar))
+            return command;
+
+        var pathExts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var hasExtension = Path.HasExtension(command);
+        foreach (var dir in dirs)
+        {
+            // Honor an explicit extension the caller already typed ("foo.exe").
+            if (hasExtension)
+            {
+                var exact = Path.Combine(dir, command);
+                if (File.Exists(exact)) return exact;
+            }
+            // Otherwise try each PATHEXT in order (".EXE" beats ".CMD", matching
+            // the shell), so a real exe is preferred over a same-named shim.
+            foreach (var ext in pathExts)
+            {
+                var candidate = Path.Combine(dir, command + ext);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        return command;
+    }
+
     private static bool IsHelp(string a) =>
         a is "-h" or "--help" or "help" or "/?";
 
-    private static string FormatElapsed(TimeSpan t) =>
+    // Invariant culture so the elapsed time reads "1.5s" everywhere — without
+    // it, machines whose culture uses a comma decimal separator emit "1,5s"
+    // into the notification (the rest of the CLI already formats machine-facing
+    // values invariantly, e.g. the schtasks /ST time).
+    internal static string FormatElapsed(TimeSpan t) =>
         t.TotalMinutes >= 1
-            ? $"{(int)t.TotalMinutes}m{t.Seconds:00}s"
-            : $"{t.TotalSeconds:0.0}s";
+            ? string.Create(CultureInfo.InvariantCulture, $"{(int)t.TotalMinutes}m{t.Seconds:00}s")
+            : string.Create(CultureInfo.InvariantCulture, $"{t.TotalSeconds:0.0}s");
 }
