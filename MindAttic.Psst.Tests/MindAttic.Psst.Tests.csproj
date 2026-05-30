@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MindAttic.Psst\MindAttic.Psst.csproj" />
+    <ProjectReference Include="..\MindAttic.Psst.Cli\MindAttic.Psst.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>

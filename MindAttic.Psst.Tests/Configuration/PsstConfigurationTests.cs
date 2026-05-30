@@ -141,6 +141,25 @@ public class PsstConfigurationTests
     }
 
     [Theory]
+    [InlineData("0")]        // zero is not a usable TCP port
+    [InlineData("-1")]       // negative
+    [InlineData("70000")]    // above the 65535 ceiling
+    public void Load_EmailOutOfRangePort_DefaultsTo587(string port)
+    {
+        var config = PsstConfiguration.Load(Build(new()
+        {
+            ["MindAttic:Vault:Notifications:email:smtpHost"] = "smtp.gmail.com",
+            ["MindAttic:Vault:Notifications:email:smtpPort"] = port,
+            ["MindAttic:Vault:Notifications:email:username"] = "u@example.com",
+            ["MindAttic:Vault:Notifications:email:password"] = "pw",
+            ["MindAttic:Vault:Notifications:email:from"]     = "u@example.com",
+        }));
+
+        Assert.NotNull(config.Email);
+        Assert.Equal(587, config.Email!.SmtpPort);
+    }
+
+    [Theory]
     [InlineData("smtpHost")]
     [InlineData("username")]
     [InlineData("password")]

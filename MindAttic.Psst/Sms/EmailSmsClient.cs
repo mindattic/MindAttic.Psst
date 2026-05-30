@@ -57,6 +57,12 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
         {
             var smtp = await EnsureConnectedAsync(cancellationToken);
 
+            // Parse the sender once. A malformed `From` is a config error, not a
+            // per-recipient failure — parsing it here lets it surface through the
+            // outer catch as a single clear message instead of being reported
+            // identically against every recipient.
+            var fromAddress = MailboxAddress.Parse(_settings.From);
+
             var succeeded = new List<string>();
             var failed = new List<string>();
             foreach (var to in recipients)
@@ -64,7 +70,7 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
                 try
                 {
                     var mail = new MimeMessage();
-                    mail.From.Add(MailboxAddress.Parse(_settings.From));
+                    mail.From.Add(fromAddress);
                     mail.To.Add(MailboxAddress.Parse(to));
                     // Deliberately leave Subject unset. Setting it to "" emits an
                     // empty `Subject:` header that several gateways render as
@@ -81,6 +87,16 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
                 catch (Exception ex)
                 {
                     failed.Add($"{to}: {Truncate(ex.Message, 120)}");
+                    // Distinguish a per-address rejection (connection still up —
+                    // try the next recipient) from a dropped connection. Once the
+                    // socket is gone, every remaining recipient would just throw
+                    // the same error; drop the dead session so the next send
+                    // reconnects cleanly, and stop hammering it.
+                    if (!smtp.IsConnected)
+                    {
+                        await TryDisconnectAsync();
+                        break;
+                    }
                 }
             }
 

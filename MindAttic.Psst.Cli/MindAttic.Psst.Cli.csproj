@@ -7,11 +7,14 @@
     <AssemblyName>psst</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>mindattic-vault-shared</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MindAttic.Psst\MindAttic.Psst.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MindAttic.Psst.Tests" />
   </ItemGroup>
 
   <ItemGroup>

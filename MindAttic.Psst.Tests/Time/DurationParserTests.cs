@@ -87,6 +87,29 @@ public class DurationParserTests
         Assert.Equal(expected, DurationParser.Format(TimeSpan.FromSeconds(seconds)));
     }
 
+    [Theory]
+    [InlineData(-30,        "-30s")]
+    [InlineData(-5 * 60,    "-5m")]
+    [InlineData(-24 * 3600, "-1d")]
+    public void Format_NegativeSpansGetLeadingSign(long seconds, string expected)
+    {
+        Assert.Equal(expected, DurationParser.Format(TimeSpan.FromSeconds(seconds)));
+    }
+
+    [Fact]
+    public void Format_ExtremeValues_DoNotThrow()
+    {
+        // TimeSpan.MinValue negates to a value that overflows long ticks;
+        // Format must render it rather than throwing OverflowException.
+        var min = DurationParser.Format(TimeSpan.MinValue);
+        Assert.StartsWith("-", min);
+        Assert.EndsWith("s", min);
+
+        var max = DurationParser.Format(TimeSpan.MaxValue);
+        Assert.EndsWith("s", max);
+        Assert.DoesNotContain("-", max);
+    }
+
     [Fact]
     public void Format_RoundTripsThroughParse()
     {
