@@ -8,3 +8,13 @@
 - Usage: `psst -- <command> [args...]` — wraps the command, captures exit code, fires sound + SMS on exit.
 - SMS path: Twilio first (creds from MindAttic.Vault), email-to-SMS gateway as fallback.
 - Sound: short WAV clip embedded as a resource, played via `System.Media.SoundPlayer`.
+
+## Codex — how to work in this repo
+- **Source of truth lives in `docs/`** (MindAttic Codex standard). Read these before changing behavior:
+  - `docs/BIBLE.md` (L0) — what Psst IS / is NOT, architecture, and the Laws (`PST-LAW-n`). It **inherits** the org-wide `../MindAttic.HouseRules.md` (`HOUSE-LAW-n`) by reference.
+  - `docs/AMENDMENTS.md` (L1) — append-only change log. **Amendment wins** over the bible.
+  - `docs/USER_STORIES.md` (L2) — test-cited stories; every `✅` names its xUnit test.
+  - `docs/rfc/` — design notes that graduate into the bible + stories.
+- **Conventions.** A fact lives in exactly one layer; cross-reference by stable `{#PST-...}` anchor, never by line number. Mark a story `✅` only when a test/build proves it (`HOUSE-LAW-8`) — otherwise `🟡`/`⬜`.
+- **Tooling.** `tools/codex.ps1 doctor` lints the canon (front-matter, anchor/cross-ref integrity, story↔test citations, cited paths, digest freshness). `tools/codex.ps1 digest` regenerates `docs/BIBLE.digest.md` (never hand-edit it). Run `digest` after editing `BIBLE.md`, then `doctor` before committing.
+- **Session context.** `.claude/hooks/inject-digest.ps1` (SessionStart, wired in `.claude/settings.json`) injects `docs/BIBLE.digest.md` as authoritative context at the start of each session.
