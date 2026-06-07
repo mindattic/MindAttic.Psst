@@ -26,11 +26,12 @@ it succeeded or failed.
   tests, deploys, migrations, long `curl`s, ML training runs.
 - **No daemon, no service.** Just a single CLI. Nothing in the background,
   nothing listening on a port, nothing to babysit.
-- **SMS that actually arrives.** Twilio first for real carrier delivery, with
-  an email-to-SMS gateway fallback for zero-cost setups.
+- **SMS that actually arrives.** Email-to-SMS carrier fanout is the zero-setup
+  default; Twilio A2P 10DLC is selectable (`--via twilio`) for direct carrier delivery.
 - **Credentials stay yours.** Secrets live outside the repo via the shared
-  `MindAttic.Vault` chain — User Secrets, `%APPDATA%`, or environment
-  variables. Never a `.env` checked into source control.
+  `MindAttic.Vault` chain — `%APPDATA%\MindAttic\Notifications\providers.json`,
+  `%APPDATA%\MindAttic\Psst\settings.json`, or environment variables. Never
+  checked into source control.
 
 ## CLI at a glance
 
@@ -45,10 +46,10 @@ psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled se
 psst pending                               Alias for `psst scheduled`.
 ```
 
-SMS is delivered via **Twilio** (preferred) with an **email-to-SMS gateway**
-fallback. Credentials are resolved through the shared `MindAttic.Vault`
-configuration chain (User Secrets / environment variables / optional
-`appsettings.json`).
+SMS is delivered via **email-to-SMS carrier fanout** by default, with **Twilio**
+selectable for direct A2P delivery (`--via twilio`). Credentials are resolved
+through the shared `MindAttic.Vault` configuration chain (`%APPDATA%`
+vault files / `settings.json` / environment variables).
 
 ## Repeat & schedule
 
@@ -238,7 +239,6 @@ Psst reads from several sources, lowest → highest precedence:
 | Source | Path | Notes |
 |---|---|---|
 | Vault file | `%APPDATA%\MindAttic\Notifications\providers.json` | canonical credential store |
-| `.env` fallback | `%APPDATA%\MindAttic\Psst\.env` | KEY=VALUE; outside the repo |
 | `appsettings.json` | `.\appsettings.json` (CWD) | optional, legacy |
 | **settings.json** | `%APPDATA%\MindAttic\Psst\settings.json` | **primary**, outside the repo |
 | Environment variables | `MindAttic__Vault__Notifications__*` | CI / containers override |
@@ -267,20 +267,7 @@ Create `%APPDATA%\MindAttic\Psst\settings.json`:
 }
 ```
 
-#### Option B — `.env` (fallback)
-
-Create `%APPDATA%\MindAttic\Psst\.env` (keys use `__` between segments):
-
-```env
-MindAttic__Vault__Notifications__twilio__accountSid=AC...
-MindAttic__Vault__Notifications__twilio__authToken=...
-MindAttic__Vault__Notifications__twilio__from=+15555550100
-MindAttic__Vault__Notifications__to=+15555550101
-```
-
-Anything set in `settings.json` overrides the same key in `.env`.
-
-#### Option C — Vault file (`providers.json`)
+#### Option B — Vault file (`providers.json`)
 
 Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 
@@ -302,7 +289,7 @@ Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 }
 ```
 
-#### Option D — Environment variables
+#### Option C — Environment variables
 
 ```powershell
 $env:MindAttic__Vault__Notifications__twilio__accountSid = "AC..."
@@ -326,8 +313,8 @@ If you commit your Auth Token by accident, treat it as compromised:
 2. Under **Live Credentials**, click **Reset** next to **Auth Token** (or
    create a new **Standard API Key** and migrate to using SID/Secret pairs,
    which can be revoked individually).
-3. Update the value everywhere it's wired up: User Secrets on each dev
-   machine, CI secrets, server env vars.
+3. Update the value everywhere it's wired up: the `%APPDATA%` vault/settings
+   files on each dev machine, CI secrets, server env vars.
 4. Audit recent message logs (**Monitor → Logs → Messaging**) for unexpected
    sends before assuming nothing went out under your account.
 

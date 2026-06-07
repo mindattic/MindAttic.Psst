@@ -34,3 +34,29 @@ no source/application code was modified. The bible **inherits** the pre-existing
   `psst.exe` is a CLI front door over it ([HOUSE-LAW-6](../../MindAttic.HouseRules.md#HOUSE-LAW-6)).
 - **No L5 canon-as-data** — the only catalog (`CarrierGateways.UnitedStatesDomains`) is small and
   deliberately code-resident per [PST-LAW-3](BIBLE.md#PST-LAW-3).
+
+## PST-A2 — Codex full-sync: reconcile config-source docs against reality (2026-06-07)
+
+**What changed.** `README.md` and `CLAUDE.md` contained stale references to a retired
+configuration pattern:
+
+1. **User Secrets retired.** Three README mentions of "User Secrets" as a live credential
+   source replaced with the actual APPDATA bucket paths. `CLAUDE.md`'s "SMS path: Twilio first"
+   summary corrected to reflect that email-to-SMS fanout is the project default and Twilio
+   requires explicit opt-in (`--via twilio` / `PSST_VIA`).
+
+2. **Non-existent `.env` option removed.** README documented an "Option B — `.env` fallback"
+   (`%APPDATA%\MindAttic\Psst\.env`) and a table row for it; inspecting
+   `PsstCli.BuildConfiguration()` confirms no `.env` loader exists in the chain. The option and
+   table row were removed; former Option C/D renumbered to B/C.
+
+3. **Sound description updated.** `CLAUDE.md` described sound as "WAV via SoundPlayer" only;
+   the actual `PsstSoundPlayer` tries MP3 via NAudio first and falls back to WAV.
+
+**Why.** Docs follow code; these drifts would have given any reader (or Claude session) a
+false picture of the credential chain and transport defaults. The Vault `CLAUDE.md` explicitly
+states "User Secrets is retired — do not reintroduce it."
+
+**BIBLE canon impact.** None — `docs/BIBLE.md` already described the correct Vault APPDATA
+Notifications chain and email-first transport semantics. Only `README.md` and `CLAUDE.md`
+were out of sync.

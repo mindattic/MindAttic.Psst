@@ -6,8 +6,8 @@
 ## What this is
 - A standalone notifier — like someone tapping your shoulder when a CLI process finishes. Plays a short attention-getter clip locally and sends an SMS.
 - Usage: `psst -- <command> [args...]` — wraps the command, captures exit code, fires sound + SMS on exit.
-- SMS path: Twilio first (creds from MindAttic.Vault), email-to-SMS gateway as fallback.
-- Sound: short WAV clip embedded as a resource, played via `System.Media.SoundPlayer`.
+- SMS path: email-to-SMS carrier fanout by default; Twilio A2P 10DLC when selected via `--via twilio` / `PSST_VIA` / per-contact default. Creds from MindAttic.Vault (`MindAttic:Vault:Notifications`).
+- Sound: embedded MP3 played via NAudio (primary), falls back to embedded WAV via `System.Media.SoundPlayer`; degrades silently off-Windows.
 
 ## Codex — how to work in this repo
 - **Source of truth lives in `docs/`** (MindAttic Codex standard). Read these before changing behavior:
