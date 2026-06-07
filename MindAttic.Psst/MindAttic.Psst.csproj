@@ -6,7 +6,8 @@
     <AssemblyName>MindAttic.Psst</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <!-- Whole-number versioning: major-only bumps (1.0.0 → 2.0.0 → 3.0.0). Minor/patch stay 0. -->
+    <Version>1.0.0</Version>
     <PackageId>MindAttic.Psst</PackageId>
     <Title>MindAttic.Psst</Title>
     <Authors>MindAttic</Authors>
@@ -32,7 +33,7 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="MailKit" Version="4.16.0" />
-    <PackageReference Include="MindAttic.Vault" Version="0.3.0" />
+    <PackageReference Include="MindAttic.Vault" Version="1.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
   </ItemGroup>
 
