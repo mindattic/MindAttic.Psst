@@ -2,6 +2,7 @@
 
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using MindAttic.Psst.Configuration;
 
 /// <summary>
@@ -43,8 +44,21 @@ public sealed class TwilioSmsClient : ISmsClient
             using var response = await _http.SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (response.IsSuccessStatusCode)
-                return new SmsResult(true, TransportName, "queued");
-            return new SmsResult(false, TransportName, $"HTTP {(int)response.StatusCode}: {Truncate(body, 200)}");
+            {
+                var status = TryGetJsonString(body, "status") ?? "queued";
+                var errorCode = TryGetJsonString(body, "error_code");
+                var errorMessage = TryGetJsonString(body, "error_message");
+                var detail = errorCode is not null
+                    ? $"{status} (error {errorCode}: {errorMessage})"
+                    : status;
+                return new SmsResult(true, TransportName, detail);
+            }
+            var twilioMessage = TryGetJsonString(body, "message");
+            var twilioCode    = TryGetJsonString(body, "code");
+            var failDetail = twilioMessage is not null
+                ? (twilioCode is not null ? $"[{twilioCode}] {twilioMessage}" : twilioMessage)
+                : $"HTTP {(int)response.StatusCode}: {Truncate(body, 200)}";
+            return new SmsResult(false, TransportName, failDetail);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -62,6 +76,19 @@ public sealed class TwilioSmsClient : ISmsClient
             // un-signaled token. Treat that as a transport failure.
             return new SmsResult(false, TransportName, $"timeout: {ex.Message}");
         }
+    }
+
+    private static string? TryGetJsonString(string json, string property)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty(property, out var el) &&
+                el.ValueKind == JsonValueKind.String)
+                return el.GetString();
+        }
+        catch (JsonException) { }
+        return null;
     }
 
     private static string Truncate(string s, int max) =>
