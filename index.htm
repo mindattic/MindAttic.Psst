@@ -9514,8 +9514,8 @@ succeeded or failed.</p>
   training runs.</li>
   <li><strong>No daemon, no service.</strong> Just a single CLI. Nothing in the
   background, nothing listening on a port, nothing to babysit.</li>
-  <li><strong>SMS that actually arrives.</strong> Twilio first for real carrier
-  delivery, with an email-to-SMS gateway fallback for zero-cost setups.</li>
+  <li><strong>SMS that actually arrives.</strong> Email-to-SMS carrier fanout
+  fans your number out to every known US gateway — no registration required.</li>
   <li><strong>Credentials stay yours.</strong> Secrets live outside the repo
   via the shared <code>MindAttic.Vault</code> chain — User Secrets,
   <code>%APPDATA%</code>, or environment variables. Never a <code>.env</code>

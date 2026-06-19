@@ -26,9 +26,8 @@ the instant it lands.
   failed. See [§4.3](#PST-§4) `WrapAsync`.
 - **Know without looking.** The message states *what* ran, the *OK/FAIL* status (with a readable
   label for well-known NTSTATUS crash codes), and *how long* it took.
-- **SMS that actually arrives.** Email-to-SMS carrier fanout is the zero-setup default; Twilio
-  A2P 10DLC is selectable per-send for direct carrier delivery. Exactly one transport per send —
-  no implicit fallback chain at send time ([LAW-4](#PST-LAW-4)).
+- **SMS that actually arrives.** Email-to-SMS carrier fanout is the transport. Exactly one
+  transport per send — no implicit fallback chain at send time ([LAW-4](#PST-LAW-4)).
 - **No daemon, no service.** A single CLI. Nothing listening on a port; deferred/repeat sends
   detach to Windows Task Scheduler rather than holding the shell open.
 - **Credentials stay out of the repo.** Secrets resolve through the shared `MindAttic.Vault`
@@ -68,8 +67,7 @@ the instant it lands.
         │                 │   PsstSound│   │    └─▶ schtasks.exe          │
         │                 └── SMS      │   └────────────────────────────┘
         │     ISmsClient               │
-        │      ├─ EmailSmsClient (MailKit, carrier fanout)
-        │      └─ TwilioSmsClient (HTTP, A2P)
+        │      └─ EmailSmsClient (MailKit, carrier fanout)
         │  PsstConfiguration ◀── MindAttic.Vault chain
         └──────────────────────────────┘
 ```
@@ -94,14 +92,11 @@ the instant it lands.
   dispatcher contract + its outcome record.
 - **`EmailSmsClient`** (`MindAttic.Psst/Sms/EmailSmsClient.cs`) — MailKit SMTP transport that
   delivers through carrier email-to-SMS gateways.
-- **`TwilioSmsClient`** (`MindAttic.Psst/Sms/TwilioSmsClient.cs`) — Twilio REST A2P transport.
 - **`CarrierGateways`** (`MindAttic.Psst/Sms/CarrierGateways.cs`) — US carrier gateway catalog +
   phone normalization + recipient fan-out/combine helpers.
 - **`PsstVia` / `PsstViaResolver`** (`MindAttic.Psst/PsstVia.cs`) — transport enum + precedence
-  resolver (`--via` > `PSST_VIA` > contact default > project default Email).
-- **`PsstFeatures`** (`MindAttic.Psst/PsstFeatures.cs`) — compile-time feature gate
-  (`TwilioEnabled`).
-- **`PsstConfiguration` / `TwilioSettings` / `EmailSettings`** (`MindAttic.Psst/Configuration/PsstConfiguration.cs`)
+  resolver (`PSST_VIA` env var > contact default > project default Email).
+- **`PsstConfiguration` / `EmailSettings`** (`MindAttic.Psst/Configuration/PsstConfiguration.cs`)
   — strongly-typed settings loaded from the Vault `IConfiguration` chain, with partial-config
   diagnostics.
 - **`PsstConfigurationSources`** (`MindAttic.Psst/Configuration/PsstConfigurationSources.cs`) —
@@ -118,8 +113,8 @@ the instant it lands.
 - **`PsstCli.RunAsync` / `WrapAsync` / `TestAsync` / `Ping` / `SoundAsync` / `Contacts` / `SmsAsync` / `ScheduledAsync`**
   (`MindAttic.Psst.Cli/PsstCli.cs`) — the subcommand handlers.
 - **`PsstCli.ResolveExecutable`** — PATH × PATHEXT resolution so bare `npm`/`yarn` `.cmd` shims launch.
-- **`PsstCli.ParseSmsFlags`** — single-pass flag parser for `--repeat/--interval/--every/--schedule/--start/--via`.
-- **`PsstViaResolver.Resolve`** — apply transport precedence for one send.
+- **`PsstCli.ParseSmsFlags`** — single-pass flag parser for `--repeat/--interval/--every/--schedule/--start`.
+- **`PsstViaResolver.Resolve`** — apply transport precedence for one send (env var > contact default > Email).
 - **`PsstConfiguration.Load`** — build typed settings from `IConfiguration`.
 - **`PsstSoundPlayer.PlayAsync`** — play the embedded clip (MP3 via NAudio, WAV via SoundPlayer fallback).
 - **`CarrierGateways.BuildFanout` / `Combine` / `NormalizeTo10Digits`** — recipient list math.
@@ -158,7 +153,7 @@ gateways silently drop. (`CarrierGateways`.)
 
 ### PST-LAW-4 — One transport per send, no send-time fallback {#PST-LAW-4}
 Each send resolves to exactly one transport via the `PsstViaResolver` precedence chain
-(`--via` > `PSST_VIA` > contact default > project default Email). The notifier never silently
+(`PSST_VIA` env var > contact default > project default Email). The notifier never silently
 tries a second transport after the chosen one is configured. (`PsstNotifier.BuildClients`,
 `PsstViaResolver.Resolve`.)
 
@@ -183,12 +178,10 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 Evidence captured 2026-06-07 on this working tree.
 
 - ✅ **Build**: `dotnet build MindAttic.Psst.slnx -c Release` — clean (all three projects compile).
-- ✅ **Tests**: `dotnet test MindAttic.Psst.slnx -c Release` — **114 passed, 0 failed, 0 skipped**
+- ✅ **Tests**: `dotnet test MindAttic.Psst.slnx -c Release` — **100 passed, 0 failed, 0 skipped**
   (Duration ~0.4s).
 - ✅ **Notification pipeline** (`PsstNotifier`) — verified by `PsstNotifierTests` (10 tests:
   silent suppression, concurrent sound+SMS, transport selection, cancellation propagation).
-- ✅ **Twilio transport** (`TwilioSmsClient`) — verified by `TwilioSmsClientTests` (9 tests:
-  URL, basic-auth, form fields, success/failure mapping, error truncation).
 - ✅ **Configuration loading** (`PsstConfiguration`) — verified by `PsstConfigurationTests` and
   `PsstConfigurationSourcesTests` (partial-config diagnostics, Vault path resolution).
 - ✅ **Duration & time parsing** — verified by `DurationParserTests` and `TimeOfDayParserTests`
@@ -196,8 +189,8 @@ Evidence captured 2026-06-07 on this working tree.
 - ✅ **Scheduler argv quoting** (`ScheduledTaskRegistrar`) — verified by
   `ScheduledTaskRegistrarTests` (percent-doubling, cmd metacharacter quoting).
 - ✅ **CLI helpers** (`FormatElapsed`, `ResolveExecutable`) — verified by `PsstCliTests`.
-- 🟡 **End-to-end live SMS delivery** (real Twilio / real carrier gateway) — not covered by an
-  automated test (requires live credentials + a real phone). Exercised manually via `psst test`.
+- 🟡 **End-to-end live SMS delivery** (real carrier gateway) — not covered by an automated test
+  (requires live credentials + a real phone). Exercised manually via `psst test`.
 - 🟡 **Live `schtasks` registration / sound playback on hardware** — unit-tested at the
   string/quoting level; the actual OS calls are validated manually.
 
@@ -224,11 +217,10 @@ Anything not meeting all five is `🟡 partial` or `⬜ planned` — never `✅`
 ## 9. Glossary {#PST-§9}
 
 - **Wrap** — `psst -- <command>`: run a command to completion and notify on exit.
-- **Transport (via)** — the channel a send uses: `email` (carrier email-to-SMS) or `twilio` (A2P 10DLC).
+- **Transport (via)** — the channel a send uses. Currently: `email` (carrier email-to-SMS). The
+  `PsstVia` enum and `PsstViaResolver` are structured for future alternative transports.
 - **Fanout** — sending one email-to-SMS message to every known US carrier gateway for a number,
   since the carrier is unknown ([PST-LAW-3](#PST-LAW-3)).
-- **A2P 10DLC** — Application-to-Person messaging over US 10-digit long codes; Twilio's registered
-  path. Unregistered traffic is throttled/dropped (carrier error 30034).
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
 - **Sidecar** — the JSON metadata file written next to a scheduled launcher `.cmd` so
   `psst scheduled` can render a meaningful listing.

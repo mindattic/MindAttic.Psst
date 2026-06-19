@@ -26,8 +26,8 @@ it succeeded or failed.
   tests, deploys, migrations, long `curl`s, ML training runs.
 - **No daemon, no service.** Just a single CLI. Nothing in the background,
   nothing listening on a port, nothing to babysit.
-- **SMS that actually arrives.** Email-to-SMS carrier fanout is the zero-setup
-  default; Twilio A2P 10DLC is selectable (`--via twilio`) for direct carrier delivery.
+- **SMS that actually arrives.** Email-to-SMS carrier fanout fans your number
+  out to every known US carrier gateway — no registration required.
 - **Credentials stay yours.** Secrets live outside the repo via the shared
   `MindAttic.Vault` chain — `%APPDATA%\MindAttic\Notifications\providers.json`,
   `%APPDATA%\MindAttic\Psst\settings.json`, or environment variables. Never
@@ -46,8 +46,7 @@ psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled se
 psst pending                               Alias for `psst scheduled`.
 ```
 
-SMS is delivered via **email-to-SMS carrier fanout** by default, with **Twilio**
-selectable for direct A2P delivery (`--via twilio`). Credentials are resolved
+SMS is delivered via **email-to-SMS carrier fanout**. Credentials are resolved
 through the shared `MindAttic.Vault` configuration chain (`%APPDATA%`
 vault files / `settings.json` / environment variables).
 
@@ -194,45 +193,14 @@ schtasks /Query /TN MindAttic.Psst.*    # tab-complete task name first
 schtasks /Delete /TN <task-name> /F     # cancel one
 ```
 
-## Setting up Twilio
+## Setting up SMS
 
-Twilio is the primary SMS transport. You need three values: an Account SID,
-an Auth Token, and a Twilio phone number to send from.
+Psst sends SMS via **email-to-SMS carrier fanout**. You need an SMTP account
+(Gmail app password, Outlook, or any relay) and your recipient's phone number.
+Psst fans the message out to every known US carrier gateway automatically —
+no carrier registration required.
 
-### 1. Create a Twilio account
-
-1. Go to <https://www.twilio.com/try-twilio> and sign up.
-2. Verify the email address and your personal mobile number — Twilio uses the
-   mobile number both for 2FA on the console and as the only allowed
-   destination for **trial accounts** (see "Trial accounts" below).
-3. After verification you land on the Twilio **Console** dashboard.
-
-### 2. Buy (or pick) a phone number
-
-1. In the Console, open **Phone Numbers → Manage → Buy a number**.
-2. Filter by country and tick **SMS** in the **Capabilities** column.
-3. Choose a number and click **Buy** (trial accounts get one number for free
-   using trial credits).
-4. The number you bought — in E.164 format like `+15555550100` — is your
-   `twilio:from`.
-
-### 3. Copy the Account SID and Auth Token
-
-1. From the Console home page, scroll to **Account Info**.
-2. The **Account SID** starts with `AC…` — this is `twilio:accountSid`.
-3. Click **Show** next to **Auth Token** and copy it — this is
-   `twilio:authToken`. Treat it like a password; rotating it invalidates any
-   client that uses the old value.
-
-### 4. Trial accounts — verify destination numbers
-
-Trial accounts can **only** send SMS to verified numbers.
-
-1. Open **Phone Numbers → Manage → Verified Caller IDs**.
-2. Add and verify each number that will receive Psst notifications.
-3. Upgrade to a paid account when you need to send to arbitrary numbers.
-
-### 5. Wire the credentials into Psst
+### Wire the credentials into Psst
 
 Psst reads from several sources, lowest → highest precedence:
 
@@ -243,9 +211,6 @@ Psst reads from several sources, lowest → highest precedence:
 | **settings.json** | `%APPDATA%\MindAttic\Psst\settings.json` | **primary**, outside the repo |
 | Environment variables | `MindAttic__Vault__Notifications__*` | CI / containers override |
 
-Pick whichever feels right. The file-based locations under `%APPDATA%`
-keep credentials out of the source tree.
-
 #### Option A — `settings.json` (recommended)
 
 Create `%APPDATA%\MindAttic\Psst\settings.json`:
@@ -255,10 +220,12 @@ Create `%APPDATA%\MindAttic\Psst\settings.json`:
   "MindAttic": {
     "Vault": {
       "Notifications": {
-        "twilio": {
-          "accountSid": "AC...",
-          "authToken":  "...",
-          "from":       "+15555550100"
+        "email": {
+          "smtpHost": "smtp.gmail.com",
+          "smtpPort": 587,
+          "username": "you@gmail.com",
+          "password": "app-password",
+          "from":     "you@gmail.com"
         },
         "to": "+15555550101"
       }
@@ -267,17 +234,24 @@ Create `%APPDATA%\MindAttic\Psst\settings.json`:
 }
 ```
 
+For Gmail you must use an **app password** (Google Account → Security →
+2-Step Verification → App passwords), not your account password.
+
+You can also pin a specific carrier gateway with `toEmail`:
+
+```json
+"toEmail": "5555550101@vtext.com"
+```
+
+If both `to` and `toEmail` are set, the fanout and the explicit address are
+combined (deduplicated).
+
 #### Option B — Vault file (`providers.json`)
 
 Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 
 ```json
 {
-  "twilio": {
-    "accountSid": "AC...",
-    "authToken":  "...",
-    "from":       "+15555550100"
-  },
   "email": {
     "smtpHost": "smtp.example.com",
     "smtpPort": 587,
@@ -292,70 +266,17 @@ Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 #### Option C — Environment variables
 
 ```powershell
-$env:MindAttic__Vault__Notifications__twilio__accountSid = "AC..."
-$env:MindAttic__Vault__Notifications__twilio__authToken  = "..."
-$env:MindAttic__Vault__Notifications__twilio__from       = "+15555550100"
-$env:MindAttic__Vault__Notifications__to                 = "+15555550101"
+$env:MindAttic__Vault__Notifications__email__smtpHost = "smtp.gmail.com"
+$env:MindAttic__Vault__Notifications__email__smtpPort = "587"
+$env:MindAttic__Vault__Notifications__email__username = "you@gmail.com"
+$env:MindAttic__Vault__Notifications__email__password = "app-password"
+$env:MindAttic__Vault__Notifications__email__from     = "you@gmail.com"
+$env:MindAttic__Vault__Notifications__to              = "+15555550101"
 ```
 
-### 6. Verify it works
+### Verify it works
 
 ```powershell
 psst ping     # lists each source path and whether it was found
 psst test     # sends a real SMS — check your phone
 ```
-
-### Rotating or revoking a leaked Auth Token
-
-If you commit your Auth Token by accident, treat it as compromised:
-
-1. In the Twilio Console, open **Account → API keys & tokens**.
-2. Under **Live Credentials**, click **Reset** next to **Auth Token** (or
-   create a new **Standard API Key** and migrate to using SID/Secret pairs,
-   which can be revoked individually).
-3. Update the value everywhere it's wired up: the `%APPDATA%` vault/settings
-   files on each dev machine, CI secrets, server env vars.
-4. Audit recent message logs (**Monitor → Logs → Messaging**) for unexpected
-   sends before assuming nothing went out under your account.
-
-The same flow applies if a laptop is lost or a contributor leaves.
-
-### Notes on US A2P 10DLC
-
-If your `from` number is a US 10-digit long code, US carriers require
-registration under the **A2P 10DLC** program for non-trivial message volume.
-Unregistered traffic is heavily throttled and may be blocked outright. For
-personal notifier use this rarely matters, but if you start sending dozens of
-messages a day, register the number in the Twilio Console under
-**Messaging → Regulatory compliance**.
-
-## Email-to-SMS fallback (optional)
-
-Most US carriers expose a per-number email address that delivers as SMS.
-Examples: `5555550100@vtext.com` (Verizon), `5555550100@txt.att.net` (AT&T),
-`5555550100@tmomail.net` (T-Mobile). Deliverability varies; this is the
-fallback when Twilio isn't configured.
-
-Add an `email` block to `%APPDATA%\MindAttic\Psst\settings.json`:
-
-```json
-{
-  "MindAttic": {
-    "Vault": {
-      "Notifications": {
-        "email": {
-          "smtpHost": "smtp.gmail.com",
-          "smtpPort": 587,
-          "username": "you@gmail.com",
-          "password": "app-password",
-          "from":     "you@gmail.com"
-        },
-        "toEmail": "5555550100@vtext.com"
-      }
-    }
-  }
-}
-```
-
-For Gmail you must use an **app password** (Google Account → Security →
-2-Step Verification → App passwords), not your account password.

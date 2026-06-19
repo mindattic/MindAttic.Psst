@@ -12,8 +12,8 @@
     <Title>MindAttic.Psst</Title>
     <Authors>MindAttic</Authors>
     <Company>MindAttic</Company>
-    <Description>Standalone notifier that plays the ICQ "Psst" sound and sends an SMS when a wrapped CLI process finishes. SMS via Twilio (preferred) with email-to-SMS gateway fallback. Credentials resolved through MindAttic.Vault.</Description>
-    <PackageTags>mindattic;psst;notification;sms;twilio;cli;notifier</PackageTags>
+    <Description>Standalone notifier that plays the ICQ "Psst" sound and sends an SMS when a wrapped CLI process finishes. SMS via email-to-SMS carrier fanout. Credentials resolved through MindAttic.Vault.</Description>
+    <PackageTags>mindattic;psst;notification;sms;cli;notifier</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>Copyright (c) 2026 MindAttic</Copyright>
   </PropertyGroup>

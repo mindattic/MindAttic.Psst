@@ -69,8 +69,8 @@ public class PsstNotifierTests
     [Fact]
     public async Task NotifyAsync_FirstTransportSucceeds_DoesNotCallSecond()
     {
-        var first = new StubClient("Twilio", success: true);
-        var second = new StubClient("Email", success: true);
+        var first = new StubClient("Primary", success: true);
+        var second = new StubClient("Secondary", success: true);
 
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);
@@ -79,14 +79,14 @@ public class PsstNotifierTests
         Assert.Equal(0, second.CallCount);
         Assert.Single(result.SmsAttempts);
         Assert.True(result.AnySmsSent);
-        Assert.Equal("Twilio", result.FirstSuccess!.Transport);
+        Assert.Equal("Primary", result.FirstSuccess!.Transport);
     }
 
     [Fact]
     public async Task NotifyAsync_FirstTransportFails_FallsBackToSecond()
     {
-        var first = new StubClient("Twilio", success: false, detail: "401");
-        var second = new StubClient("Email", success: true);
+        var first = new StubClient("Primary", success: false, detail: "401");
+        var second = new StubClient("Secondary", success: true);
 
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);
@@ -96,14 +96,14 @@ public class PsstNotifierTests
         Assert.Equal(2, result.SmsAttempts.Count);
         Assert.False(result.SmsAttempts[0].Success);
         Assert.True(result.SmsAttempts[1].Success);
-        Assert.Equal("Email", result.FirstSuccess!.Transport);
+        Assert.Equal("Secondary", result.FirstSuccess!.Transport);
     }
 
     [Fact]
     public async Task NotifyAsync_AllTransportsFail_ReportsAllAttempts()
     {
-        var first = new StubClient("Twilio", success: false, detail: "401");
-        var second = new StubClient("Email", success: false, detail: "smtp boom");
+        var first = new StubClient("Primary", success: false, detail: "401");
+        var second = new StubClient("Secondary", success: false, detail: "smtp boom");
 
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);

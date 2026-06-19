@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: digest
 status: living
-updated: 2026-06-07
+updated: 2026-06-19
 generatedFrom: docs/BIBLE.md
 ---
 
@@ -64,7 +64,7 @@ gateways silently drop. (`CarrierGateways`.)
 
 ### PST-LAW-4 — One transport per send, no send-time fallback {#PST-LAW-4}
 Each send resolves to exactly one transport via the `PsstViaResolver` precedence chain
-(`--via` > `PSST_VIA` > contact default > project default Email). The notifier never silently
+(`PSST_VIA` env var > contact default > project default Email). The notifier never silently
 tries a second transport after the chosen one is configured. (`PsstNotifier.BuildClients`,
 `PsstViaResolver.Resolve`.)
 
@@ -87,11 +87,10 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 ## 9. Glossary {#PST-§9}
 
 - **Wrap** — `psst -- <command>`: run a command to completion and notify on exit.
-- **Transport (via)** — the channel a send uses: `email` (carrier email-to-SMS) or `twilio` (A2P 10DLC).
+- **Transport (via)** — the channel a send uses. Currently: `email` (carrier email-to-SMS). The
+  `PsstVia` enum and `PsstViaResolver` are structured for future alternative transports.
 - **Fanout** — sending one email-to-SMS message to every known US carrier gateway for a number,
   since the carrier is unknown ([PST-LAW-3](#PST-LAW-3)).
-- **A2P 10DLC** — Application-to-Person messaging over US 10-digit long codes; Twilio's registered
-  path. Unregistered traffic is throttled/dropped (carrier error 30034).
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
 - **Sidecar** — the JSON metadata file written next to a scheduled launcher `.cmd` so
   `psst scheduled` can render a meaningful listing.
@@ -104,7 +103,7 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 
 ## Status index
 
-- done: 18   partial: 10   planned: 7   cut: 1
+- done: 16   partial: 9   planned: 7   cut: 3
 - (counts are glyph occurrences in docs/USER_STORIES.md)
 
 ## Latest amendment

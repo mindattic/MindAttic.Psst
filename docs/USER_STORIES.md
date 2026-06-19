@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: stories
 status: living
-updated: 2026-06-07
+updated: 2026-06-19
 ---
 
 # MindAttic.Psst — User Stories
@@ -45,20 +45,10 @@ updated: 2026-06-07
   logic verified through `PsstConfigurationTests` recipient handling and `PsstNotifierTests`
   transport dispatch; `CarrierGateways` is pure and deterministic.)* 🟡 *(downgraded: no test
   file dedicated to `CarrierGateways` directly.)*
-- **PST-US-B3 ✅** As a user, I can pick the transport with `--via twilio|email`, `PSST_VIA`, or a
-  per-contact default, with documented precedence. *Given competing sources, When resolving,
-  Then `--via` beats env beats contact-default beats project default (email).* *(precedence
-  verified by `PsstViaResolver` usage in `PsstNotifierTests`; transport gating by
-  `NotifyAsync_NoTransports_ReturnsEmptyAttempts`.)* 🟡 *(downgraded: precedence chain has no
-  dedicated `PsstViaResolverTests`; covered indirectly.)*
-- **PST-US-B4 ✅** As a user, Twilio sends go to the correct REST endpoint with basic auth and the
-  right form fields, and surface a useful error on failure. *Given a 2xx, Then success; Given a
-  non-2xx or network error, Then a failure with a (truncated) detail.* *(verified by
-  `SendAsync_2xxResponse_ReturnsSuccess`, `SendAsync_HitsCorrectUrl`,
-  `SendAsync_SendsBasicAuthHeader`, `SendAsync_PostsFromToAndBodyFormFields`,
-  `SendAsync_NonSuccessStatus_ReturnsFailureWithDetail`,
-  `SendAsync_NetworkException_ReturnsFailureWithMessage`, `SendAsync_TruncatesLongErrorBody`,
-  `TransportName_IsTwilio`.)*
+- **PST-US-B3 🗑️** *(cut by PST-A3)* Transport selection via `--via twilio|email`. Removed with
+  Twilio support; only email-to-SMS remains. Future transports will reintroduce per-send selection.
+- **PST-US-B4 🗑️** *(cut by PST-A3)* Twilio REST endpoint + basic auth. Removed with
+  `TwilioSmsClient`.
 - **PST-US-B5 ✅** As a user, exactly one transport is attempted per send (no surprise fallback),
   matching the resolved `via`. *(verified by `NotifyAsync_FirstTransportSucceeds_DoesNotCallSecond`,
   `NotifyAsync_NoTransports_ReturnsEmptyAttempts`, and `NotifyResult` accounting in
@@ -101,18 +91,15 @@ updated: 2026-06-07
 
 - **PST-US-D1 ✅** As a user, my notifier reads credentials from the `MindAttic.Vault` chain
   (vault files → appsettings → `%APPDATA%/MindAttic/Psst/settings.json` → env vars), never the
-  repo. *(verified by `PsstConfigurationTests` — `Load_FullTwilio_PopulatesTwilioRecord`,
-  `Load_FullEmail_PopulatesEmailRecord`, `Load_EmptyConfiguration_ReturnsAllNullsAndNoErrors`,
-  `HasAnySmsTransport_TrueWhenOnlyEmailConfigured`; path resolution by
-  `GetSettingsPath_IsSettingsJsonUnderAppData`, `GetAppDataDirectory_LandsUnderRoamingMindAtticPsst`,
+  repo. *(verified by `PsstConfigurationTests` — `Load_FullEmail_PopulatesEmailRecord`,
+  `Load_EmptyConfiguration_ReturnsAllNullsAndNoErrors`, `HasAnySmsTransport_TrueWhenEmailConfigured`;
+  path resolution by `GetSettingsPath_IsSettingsJsonUnderAppData`,
+  `GetAppDataDirectory_LandsUnderRoamingMindAtticPsst`,
   `GetAppDataDirectory_RespectsVaultRoamingRootOverride`.)*
 - **PST-US-D2 ✅** As a user, partial/misconfigured credentials produce a clear diagnostic instead
-  of a silent failure. *Given a Twilio block missing a field, Then `Twilio` is null and an error
-  is recorded.* *(verified by `Load_TwilioMissingAuthToken_ReturnsNullTwilio_AndAddsError`,
-  `Load_TwilioWhitespaceField_ReturnsNullTwilio`, `Load_TwilioFullButRecipientMissing_AddsError`,
-  `Load_EmailMissingRequiredField_ReturnsNullEmail_AndAddsError`.)*
+  of a silent failure. *(verified by `Load_EmailMissingRequiredField_ReturnsNullEmail_AndAddsError`.)*
 - **PST-US-D3 🟡** As a user, I can manage a contact book (`psst contacts list/add/rm`) with
-  case-insensitive name collision suffixing and optional per-contact `--via`. *`ContactBook`
+  case-insensitive name collision suffixing. *`ContactBook`
   add/remove/find semantics are exercised through the notifier/config tests, but there is no
   dedicated `ContactBookTests`/`ContactStoreTests` and the `Contacts` CLI handler is untested.*
 - **PST-US-D4 ✅** As a user, `psst ping` shows which transports are configured and what would

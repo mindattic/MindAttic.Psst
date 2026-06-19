@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: amendments
 status: living
-updated: 2026-06-07
+updated: 2026-06-19
 ---
 
 # MindAttic.Psst — Amendments (append-only; amendment wins over the bible)
@@ -60,3 +60,35 @@ states "User Secrets is retired — do not reintroduce it."
 **BIBLE canon impact.** None — `docs/BIBLE.md` already described the correct Vault APPDATA
 Notifications chain and email-first transport semantics. Only `README.md` and `CLAUDE.md`
 were out of sync.
+
+## PST-A3 — Remove Twilio; email-only SMS transport (2026-06-19)
+
+**What changed.** Twilio support has been removed from the codebase. Email-to-SMS carrier
+fanout is now the only SMS transport.
+
+**Code removed:**
+- `MindAttic.Psst/Sms/TwilioSmsClient.cs` — deleted.
+- `MindAttic.Psst/PsstFeatures.cs` — deleted (`TwilioEnabled` compile-time gate no longer needed).
+- `MindAttic.Psst.Tests/Sms/TwilioSmsClientTests.cs` — deleted (9 tests).
+- `TwilioSettings` record removed from `PsstConfiguration.cs`.
+- `PsstVia.Twilio` enum value removed; `PsstVia` now contains only `Email`.
+- `--via twilio|email` CLI flag removed from `sms` and `contacts add` subcommands.
+- `PsstViaResolver.Resolve` signature simplified (no `cliFlagValue` parameter).
+- `PsstNotifier` public constructor no longer takes `HttpClient?` (Twilio was the only HTTP consumer).
+- Twilio configuration template removed from `psst ping` output.
+
+**Extensibility preserved.** `ISmsClient`, `PsstVia`, `PsstViaResolver`, and `PsstNotifier.BuildClients`
+retain their abstraction shapes so a future alternative transport (e.g. a direct carrier API or a
+different SMS service) slots in by adding an enum value, a `TryParse` branch, a `BuildClients`
+case, and re-introducing `--via` to the CLI.
+
+**Why.** Twilio was not the right system for this use case.
+
+**Migration.** Any `settings.json` or `providers.json` with a `twilio:` block can be left in place
+or cleaned up — the config loader now silently ignores unknown keys. `PSST_VIA=twilio` in the
+environment will be treated as an unrecognized value and fall through to the Email default.
+
+**Test count.** 114 → 100 (9 TwilioSmsClientTests removed, 5 TwilioSettings config tests removed).
+
+**BIBLE canon impact.** `docs/BIBLE.md` updated: architecture diagram, §4.2 domain model,
+§4.3 key services, PST-LAW-4, §6 verified state (test count), §9 glossary.

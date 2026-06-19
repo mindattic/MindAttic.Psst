@@ -16,8 +16,8 @@ using MindAttic.Vault.Paths;
 
 /// <summary>
 /// Top-level CLI for the <c>psst</c> tool. Wraps a command line, runs it to
-/// completion, then plays the ICQ Psst sound and fires an SMS through the
-/// first available transport (Twilio, then email-to-SMS).
+/// completion, then plays the ICQ Psst sound and fires an SMS via the
+/// email-to-SMS carrier fanout transport.
 ///
 /// <para>Usage:</para>
 /// <code>
@@ -224,13 +224,7 @@ public sealed class PsstCli
         var derivedFanout = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
         var effectiveEmailRecipients = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derivedFanout);
 
-        var twilioStatus = config.Twilio is null
-            ? "not configured"
-            : (PsstFeatures.TwilioEnabled
-                ? $"configured ({config.Twilio.From} → {config.RecipientPhoneNumber ?? "<missing to>"})"
-                : $"configured but DISABLED via PsstFeatures.TwilioEnabled — {config.Twilio.From} → {config.RecipientPhoneNumber ?? "<missing to>"}");
         Console.WriteLine("MindAttic.Psst — config check");
-        Console.WriteLine($"  Twilio:        {twilioStatus}");
         Console.WriteLine($"  Email-to-SMS:  {(config.Email is null ? "not configured" : "configured (" + config.Email.From + ")")}");
         Console.WriteLine($"  Recipient #:   {config.RecipientPhoneNumber ?? "<unset>"}");
         Console.WriteLine($"  Recipient @ explicit:  {config.RecipientEmailSmsAddress ?? "<unset>"}");
@@ -261,13 +255,9 @@ public sealed class PsstCli
         Console.WriteLine();
         if (!config.HasAnySmsTransport)
         {
-            Console.WriteLine("No SMS transports configured. Pick one approach:");
-            Console.WriteLine($"  • Create the canonical Notifications credential file:");
-            Console.WriteLine($"      {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
+            Console.WriteLine("No SMS transport configured. Set up the email-to-SMS credentials:");
+            Console.WriteLine($"  • Create {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
             Console.WriteLine("      {");
-            Console.WriteLine("        \"twilio\": {");
-            Console.WriteLine("          \"accountSid\": \"AC...\", \"authToken\": \"...\", \"from\": \"+15555550100\"");
-            Console.WriteLine("        },");
             Console.WriteLine("        \"email\": {");
             Console.WriteLine("          \"smtpHost\": \"smtp.example.com\", \"smtpPort\": 587,");
             Console.WriteLine("          \"username\": \"user\", \"password\": \"***\", \"from\": \"psst@example.com\"");
@@ -334,40 +324,14 @@ public sealed class PsstCli
 
     private static int ContactsAdd(string[] args)
     {
-        // Pull --via out of argv before positional handling. Anywhere among
-        // the args is fine; this matches the `sms` flag-placement convention.
-        string? viaArg = null;
-        var positional = new List<string>();
-        for (var i = 0; i < args.Length; i++)
+        if (args.Length != 2)
         {
-            if (args[i] == "--via")
-            {
-                if (i + 1 >= args.Length)
-                {
-                    Console.Error.WriteLine("--via needs a value (twilio | email)");
-                    return 1;
-                }
-                if (!PsstViaResolver.TryParse(args[i + 1], out _))
-                {
-                    Console.Error.WriteLine($"--via got '{args[i + 1]}' — expected 'twilio' or 'email'");
-                    return 1;
-                }
-                viaArg = args[i + 1];
-                i++;
-                continue;
-            }
-            positional.Add(args[i]);
-        }
-        if (positional.Count != 2)
-        {
-            Console.Error.WriteLine("usage: psst contacts add [--via twilio|email] <name> <phone>");
+            Console.Error.WriteLine("usage: psst contacts add <name> <phone>");
             return 1;
         }
 
-        var (requestedName, phone) = (positional[0], positional[1]);
+        var (requestedName, phone) = (args[0], args[1]);
         PsstVia? defaultVia = null;
-        if (viaArg is not null && PsstViaResolver.TryParse(viaArg, out var parsedVia))
-            defaultVia = parsedVia;
 
         var addLoad = ContactStore.TryLoad();
         if (addLoad.Error is not null)
@@ -448,9 +412,9 @@ public sealed class PsstCli
         Console.Error.WriteLine($"unknown contacts subcommand: {sub}");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage:");
-        Console.Error.WriteLine("  psst contacts [list]                                 List all contacts");
-        Console.Error.WriteLine("  psst contacts add [--via twilio|email] <name> <phone>  Add a contact");
-        Console.Error.WriteLine("  psst contacts rm <name>                              Remove a contact");
+        Console.Error.WriteLine("  psst contacts [list]             List all contacts");
+        Console.Error.WriteLine("  psst contacts add <name> <phone> Add a contact");
+        Console.Error.WriteLine("  psst contacts rm <name>          Remove a contact");
         return 1;
     }
 
@@ -460,7 +424,7 @@ public sealed class PsstCli
     /// flag spelling never drifts between the parser and the help text.
     /// </summary>
     private const string SmsUsage =
-        "usage: psst sms [--via twilio|email] [--repeat N] [--interval|--every <30s|5m|2h|1d>] " +
+        "usage: psst sms [--repeat N] [--interval|--every <30s|5m|2h|1d>] " +
         "[--schedule|--start <10:30am>] <name-or-phone> <message...>";
 
     /// <summary>
@@ -487,20 +451,15 @@ public sealed class PsstCli
         int Repeat,
         TimeSpan Interval,
         DateTime? ScheduledFor,
-        string? Via,
         string[] ArgsWithoutSchedule,
         string? Error);
 
     /// <summary>
     /// Send a one-off SMS to a contact (by name) or an arbitrary US phone
-    /// number. Picks one transport per send (no fallback chain) per
-    /// <see cref="PsstViaResolver"/>: <c>--via</c> &gt; <c>PSST_VIA</c> env
-    /// var &gt; the contact's <see cref="Contact.DefaultVia"/> &gt; project
-    /// default (email-to-SMS). No audio cue.
+    /// number via the email-to-SMS carrier fanout transport. No audio cue.
     ///
     /// <para>Supported flags (parsed by <see cref="ParseSmsFlags"/>):</para>
     /// <list type="bullet">
-    ///   <item><c>--via twilio|email</c> — explicit transport for this send. Overrides every lower-precedence source.</item>
     ///   <item><c>--repeat N</c> — send the message <c>N</c> times total. Default <c>1</c>.</item>
     ///   <item><c>--interval D</c> / <c>--every D</c> — delay between sends. Required when <c>--repeat &gt; 1</c>.</item>
     ///   <item><c>--schedule T</c> / <c>--start T</c> — defer the first send to local time <c>T</c> (next occurrence) via Windows Task Scheduler. Combines with <c>--repeat</c>/<c>--interval</c>: the cadence loop runs starting from the scheduled fire time.</item>
@@ -555,25 +514,16 @@ public sealed class PsstCli
         }
 
         // Resolve which transport this send uses. Precedence (highest →
-        // lowest): --via flag > PSST_VIA env var > contact's DefaultVia >
-        // project default (email). The chosen transport is the *only* one
-        // attempted — no fallback chain.
+        // lowest): PSST_VIA env var > contact's DefaultVia > project default
+        // (email). The chosen transport is the *only* one attempted — no
+        // fallback chain.
         var via = PsstViaResolver.Resolve(
-            cliFlagValue:    parse.Via,
-            contactDefault:  contact?.DefaultVia is { } cdv ? PsstViaResolver.Format(cdv) : null);
+            contactDefault: contact?.DefaultVia is { } cdv ? PsstViaResolver.Format(cdv) : null);
 
-        if (via == PsstVia.Email && config.Email is null)
+        if (config.Email is null)
         {
-            Console.Error.WriteLine("email transport is not configured — can't send via email.");
-            Console.Error.WriteLine("Try `--via twilio`, or run `psst ping` to see what's wired up.");
-            return 1;
-        }
-        if (via == PsstVia.Twilio && (!PsstFeatures.TwilioEnabled || config.Twilio is null))
-        {
-            Console.Error.WriteLine(PsstFeatures.TwilioEnabled
-                ? "twilio transport is not configured — can't send via twilio."
-                : "twilio transport is disabled at compile time (PsstFeatures.TwilioEnabled = false).");
-            Console.Error.WriteLine("Try `--via email`, or run `psst ping` to see what's wired up.");
+            Console.Error.WriteLine("email transport is not configured — can't send SMS.");
+            Console.Error.WriteLine("Run `psst ping` to see setup hints.");
             return 1;
         }
 
@@ -686,7 +636,6 @@ public sealed class PsstCli
         var interval = TimeSpan.Zero;
         var hasInterval = false;
         DateTime? scheduledFor = null;
-        string? via = null;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -733,19 +682,6 @@ public sealed class PsstCli
                 continue;
             }
 
-            if (a == "--via")
-            {
-                if (i + 1 >= args.Length)
-                    return Fail("--via needs a value (twilio | email)");
-                if (!PsstViaResolver.TryParse(args[i + 1], out _))
-                    return Fail($"--via got '{args[i + 1]}' — expected 'twilio' or 'email'");
-                via = args[i + 1];
-                withoutSchedule.Add(a);
-                withoutSchedule.Add(args[i + 1]);
-                i++;
-                continue;
-            }
-
             positional.Add(a);
             withoutSchedule.Add(a);
         }
@@ -770,12 +706,11 @@ public sealed class PsstCli
             repeat,
             interval,
             scheduledFor,
-            via,
             withoutSchedule.ToArray(),
             Error: null);
 
         static ParsedSmsFlags Fail(string err) =>
-            new(Array.Empty<string>(), 1, TimeSpan.Zero, null, null, Array.Empty<string>(), err);
+            new(Array.Empty<string>(), 1, TimeSpan.Zero, null, Array.Empty<string>(), err);
     }
 
     /// <summary>
@@ -940,10 +875,10 @@ public sealed class PsstCli
 
     private static async Task Notify(PsstConfiguration config, string message, bool silent)
     {
-        // Auto-notifier (post-command wrap + `psst test`) has no per-send
-        // flag and no contact context — it just honors PSST_VIA when set,
-        // else the project default (email).
-        var via = PsstViaResolver.Resolve(cliFlagValue: null, contactDefault: null);
+        // Auto-notifier (post-command wrap + `psst test`) has no contact
+        // context — it just honors PSST_VIA when set, else the project
+        // default (email).
+        var via = PsstViaResolver.Resolve(contactDefault: null);
         await using var notifier = new PsstNotifier(config, via);
         var result = await notifier.NotifyAsync(message, silent: silent);
         Console.WriteLine(message);
@@ -973,7 +908,7 @@ public sealed class PsstCli
         Console.WriteLine("  sound                               Just play the Psst sound.");
         Console.WriteLine("  contacts [list|add|rm]              Manage the contact book.");
         Console.WriteLine("  sms [flags] <name-or-phone> <message...>");
-        Console.WriteLine("                                      Send a one-off SMS (default email-fanout; --via twilio for A2P).");
+        Console.WriteLine("                                      Send a one-off SMS via email-to-SMS carrier fanout.");
         Console.WriteLine("  scheduled / pending [list|cancel|clear]");
         Console.WriteLine("                                      Inspect / cancel pending scheduled sends.");
         Console.WriteLine();
@@ -981,8 +916,6 @@ public sealed class PsstCli
         Console.WriteLine("  --silent   Skip the audio cue. Place before the subcommand.");
         Console.WriteLine();
         Console.WriteLine("`sms` flags (may appear anywhere among the sms args):");
-        Console.WriteLine("  --via twilio|email          Pick the transport for this send.");
-        Console.WriteLine("                              Precedence: --via > $PSST_VIA > contact default > email.");
         Console.WriteLine("  --repeat N                  Send the message N times total. Default 1.");
         Console.WriteLine("  --interval D / --every D    Delay between repeats. D = 30s | 5m | 2h | 1d.");
         Console.WriteLine("                              Required whenever --repeat > 1.");
@@ -994,11 +927,10 @@ public sealed class PsstCli
         Console.WriteLine("  psst -- npm run build");
         Console.WriteLine("  psst --silent test \"deploy finished\"");
         Console.WriteLine("  psst sms jordan \"MFE.\"");
-        Console.WriteLine("  psst sms jordan \"MFE.\" --via twilio");
         Console.WriteLine("  psst sms jordan \"ping\" --repeat 12 --every 5m");
         Console.WriteLine("  psst sms jordan \"good morning\" --schedule 10:30am");
         Console.WriteLine("  psst sms jordan \"standup\" --start 9:00am --repeat 5 --every 1m");
-        Console.WriteLine("  psst contacts add jordan +15551234567 --via twilio   # stick this contact to Twilio");
+        Console.WriteLine("  psst contacts add jordan +15551234567");
         Console.WriteLine();
         Console.WriteLine("Credentials come from the shared MindAttic.Vault chain (User Secrets / env vars).");
         Console.WriteLine("Section: MindAttic:Vault:Notifications.");

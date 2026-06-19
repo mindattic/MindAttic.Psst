@@ -21,7 +21,7 @@ public class NotifyResultTests
     {
         var r = new NotifyResult(PsstPlayResult.Ok("MP3"), new[]
         {
-            new SmsResult(false, "Twilio", "401"),
+            new SmsResult(false, "Transport-A", "401"),
             new SmsResult(false, "Email-to-SMS", "smtp boom"),
         });
         Assert.False(r.AnySmsSent);
@@ -35,7 +35,7 @@ public class NotifyResultTests
         var second = new SmsResult(true, "Email-to-SMS", "sent");
         var r = new NotifyResult(PsstPlayResult.Ok("MP3"), new[]
         {
-            new SmsResult(false, "Twilio", "401"),
+            new SmsResult(false, "Transport-A", "401"),
             second,
         });
         Assert.True(r.AnySmsSent);

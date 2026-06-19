@@ -15,14 +15,14 @@ using MindAttic.Psst.Configuration;
 /// {
 ///   "contacts": [
 ///     { "name": "Ryan",  "phone": "+19203764617" },
-///     { "name": "Alice", "phone": "+15551234567", "defaultVia": "twilio" }
+///     { "name": "Alice", "phone": "+15551234567", "defaultVia": "email" }
 ///   ]
 /// }
 /// </code>
 /// <para>
 /// <c>defaultVia</c> is optional and serialized as the lowercase
-/// <see cref="PsstVia"/> name (<c>"twilio"</c> or <c>"email"</c>); omitted
-/// or null means "no per-contact preference."
+/// <see cref="PsstVia"/> name; omitted or null means "no per-contact
+/// preference" (falls back to the project default).
 /// </para>
 /// </summary>
 public static class ContactStore

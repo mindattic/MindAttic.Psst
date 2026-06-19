@@ -1,7 +1,5 @@
 namespace MindAttic.Psst;
 
-using System.Net.Http.Headers;
-using System.Reflection;
 using MindAttic.Psst.Configuration;
 using MindAttic.Psst.Sms;
 using MindAttic.Psst.Sound;
@@ -9,41 +7,16 @@ using MindAttic.Psst.Sound;
 /// <summary>
 /// Orchestrates the notification pipeline: kicks off the Psst sound and the
 /// SMS dispatch concurrently, then dispatches the message through the
-/// transport selected by <see cref="PsstVia"/> (email-to-SMS by default;
-/// Twilio when explicitly requested and <see cref="PsstFeatures.TwilioEnabled"/>
-/// is on). One transport per send — no implicit fallback chain, since the
-/// caller has already decided which path to take.
+/// configured email-to-SMS transport. One transport per send — no implicit
+/// fallback chain.
 /// </summary>
 public sealed class PsstNotifier : IAsyncDisposable
 {
-    // One process-wide HttpClient. Twilio's hostname/cert is stable enough that
-    // the default SocketsHttpHandler lifetime is fine here; we'd only need
-    // IHttpClientFactory if we were rotating endpoints frequently.
-    //
-    // Identify Psst in upstream access logs — Twilio support requests this when
-    // chasing carrier-side delivery failures, and the default ".NET/<version>"
-    // is unhelpful.
-    private static readonly Lazy<HttpClient> SharedHttp = new(() =>
-    {
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        // ProductInfoHeaderValue only accepts a strict token grammar for the
-        // version — strip anything beyond digits and dots so a +commit-hash
-        // suffix on InformationalVersion can't throw at startup.
-        var raw = typeof(PsstNotifier).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? typeof(PsstNotifier).Assembly.GetName().Version?.ToString()
-            ?? "0.0.0";
-        var version = new string(raw.TakeWhile(c => char.IsDigit(c) || c == '.').ToArray());
-        if (string.IsNullOrEmpty(version)) version = "0.0.0";
-        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MindAttic.Psst", version));
-        return http;
-    });
-
     private readonly IReadOnlyList<ISmsClient> _clients;
     private readonly Func<CancellationToken, Task<PsstPlayResult>> _playSound;
 
-    public PsstNotifier(PsstConfiguration config, PsstVia via = PsstVia.Email, HttpClient? http = null)
-        : this(BuildClients(config, http ?? SharedHttp.Value, via), PsstSoundPlayer.PlayAsync)
+    public PsstNotifier(PsstConfiguration config, PsstVia via = PsstVia.Email)
+        : this(BuildClients(config, via), PsstSoundPlayer.PlayAsync)
     {
     }
 
@@ -95,9 +68,7 @@ public sealed class PsstNotifier : IAsyncDisposable
 
     /// <summary>
     /// Tear down any client that holds an open resource (e.g.
-    /// <see cref="EmailSmsClient"/>'s persistent SMTP session). The shared
-    /// <see cref="HttpClient"/> is process-wide and intentionally not
-    /// disposed here.
+    /// <see cref="EmailSmsClient"/>'s persistent SMTP session).
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -111,23 +82,15 @@ public sealed class PsstNotifier : IAsyncDisposable
         }
     }
 
-    private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, HttpClient http, PsstVia via)
+    private static IEnumerable<ISmsClient> BuildClients(PsstConfiguration config, PsstVia via)
     {
         // Exactly one transport per send — the caller has already resolved
-        // which one via the --via flag / PSST_VIA env var / per-contact
-        // default precedence (see PsstViaResolver). When the requested
-        // transport isn't wired up (missing creds, feature-gated off, no
+        // which one via the PSST_VIA env var / per-contact default precedence
+        // (see PsstViaResolver). When nothing is wired up (missing creds, no
         // recipient), this returns an empty enumerable and DispatchSmsAsync
         // reports "no SMS transport configured" upstream.
         switch (via)
         {
-            case PsstVia.Twilio:
-                if (PsstFeatures.TwilioEnabled
-                    && config.Twilio is not null
-                    && !string.IsNullOrWhiteSpace(config.RecipientPhoneNumber))
-                    yield return new TwilioSmsClient(http, config.Twilio, config.RecipientPhoneNumber);
-                break;
-
             case PsstVia.Email:
             default:
                 // Recipients = explicit `toEmail` (if any) ∪ auto-fanout

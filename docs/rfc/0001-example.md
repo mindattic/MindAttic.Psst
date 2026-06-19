@@ -34,8 +34,8 @@ a later, Windows-trait-gated integration RFC.
 
 ## What NOT to do
 
-- Do **not** test live SMS delivery or real Twilio/carrier endpoints in unit tests — keep network
-  behind the existing `HttpMessageHandler` seam used by `TwilioSmsClientTests`.
+- Do **not** test live SMS delivery or real carrier endpoints in unit tests — keep network
+  behind injectable seams (e.g. `ISmsClient` stubs in `PsstNotifierTests`).
 - Do **not** assert real audio output or actual Task Scheduler state in the default test run —
   those stay manual / trait-gated.
 - Do **not** change production code to make it testable beyond what is already injectable.
