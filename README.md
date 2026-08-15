@@ -3,8 +3,6 @@
 > **Stop babysitting your terminal.** Psst taps you on the shoulder the moment
 > a long-running command finishes — a sound at your desk, a text on your phone.
 
-Wrap any command. Walk away. Get pinged when it's done.
-
 ```text
 psst -- dotnet test
 psst -- npm run build
@@ -14,6 +12,41 @@ psst -- terraform apply
 When the command exits, Psst plays a short attention-getter clip locally and
 sends you an SMS with the command name, exit status, and elapsed time — whether
 it succeeded or failed.
+
+Full architecture, rationale, and the project's Laws live in
+**[docs/BIBLE.md](docs/BIBLE.md)** — this README is the how-to-build/run/use
+companion. See also **[docs/AMENDMENTS.md](docs/AMENDMENTS.md)** (append-only
+change log) and **[docs/USER_STORIES.md](docs/USER_STORIES.md)** (test-cited
+story backlog). SMS-compliance pages: **[privacy.htm](privacy.htm)** ·
+**[terms.htm](terms.htm)**.
+
+## Table of contents
+
+- [Why Psst](#why-psst)
+- [Opt-in only — read this before wiring it into anything](#opt-in-only--read-this-before-wiring-it-into-anything)
+- [What it is / what it is NOT](#what-it-is--what-it-is-not)
+- [CLI reference](#cli-reference)
+  - [Global flags](#global-flags)
+  - [`psst -- <command>`](#psst----command-args)
+  - [`psst test`](#psst-test-message)
+  - [`psst ping`](#psst-ping)
+  - [`psst sound`](#psst-sound)
+  - [`psst contacts`](#psst-contacts)
+  - [`psst sms`](#psst-sms-flags-to-message)
+  - [`psst scheduled` / `psst pending`](#psst-scheduled--psst-pending)
+- [Repeat & schedule](#repeat--schedule)
+- [How `--schedule` is implemented](#how---schedule-is-implemented)
+- [The notification pipeline](#the-notification-pipeline)
+- [Sound playback](#sound-playback)
+- [SMS transport: email-to-SMS carrier fanout](#sms-transport-email-to-sms-carrier-fanout)
+- [Setting up SMS credentials](#setting-up-sms-credentials)
+- [Configuration reference](#configuration-reference)
+- [Transport selection (`PSST_VIA`)](#transport-selection-psst_via)
+- [Contact book](#contact-book)
+- [Build, test, publish](#build-test-publish)
+- [Directory layout](#directory-layout)
+- [Compliance pages](#compliance-pages)
+- [Glossary](#glossary)
 
 ## Why Psst
 
@@ -33,7 +66,35 @@ it succeeded or failed.
   `%APPDATA%\MindAttic\Psst\settings.json`, or environment variables. Never
   checked into source control.
 
-## CLI at a glance
+## Opt-in only — read this before wiring it into anything
+
+**`psst` is invoked only when a human explicitly asks to be notified — never
+auto-wrapped around a command by a script, an agent, or another tool.** This is
+an org-wide rule (`HOUSE-LAW-9` in
+[`../MindAttic.HouseRules.md`](../MindAttic.HouseRules.md#HOUSE-LAW-9)), and it
+exists specifically because Psst is easy to over-apply: it plays an audible
+sound at the operator's desk and sends a real SMS to a real phone, so silently
+wrapping "helpful" commands in `psst -- …` is a footgun, not a convenience. If
+you are an AI coding agent operating in this workspace (or any MindAttic repo):
+do not prepend `psst --` to shell commands unless the user's own message asked
+for a Psst notification ("run this with psst", "notify me when this finishes
+via psst"). Every other invocation — `psst test`, `psst sms`, `psst ping`,
+etc. — is likewise something a human runs deliberately, not something another
+tool should trigger on its behalf.
+
+## What it is / what it is NOT
+
+See [BIBLE §1–§3](docs/BIBLE.md#PST-§1) for the full canon. In short:
+
+- **IS**: a one-shot Windows CLI (`psst.exe`) plus the library behind it
+  (`MindAttic.Psst`, `net10.0-windows`) that plays a local sound and/or sends an
+  SMS, on demand or when a wrapped command exits.
+- **IS NOT**: a background daemon, a system-tray app, a cross-platform tool, a
+  general chat/messaging platform, a multi-transport fan-out engine (it fans
+  out across *carrier gateways* for one number, not across transports), or a
+  secret store.
+
+## CLI reference
 
 ```text
 psst -- <command> [args...]                Run a command. Play Psst + SMS when it exits.
@@ -46,9 +107,117 @@ psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled se
 psst pending                               Alias for `psst scheduled`.
 ```
 
-SMS is delivered via **email-to-SMS carrier fanout**. Credentials are resolved
-through the shared `MindAttic.Vault` configuration chain (`%APPDATA%`
-vault files / `settings.json` / environment variables).
+Running `psst` with no arguments, or `psst -h` / `--help` / `help` / `/?`,
+prints the built-in usage summary (`PsstCli.PrintUsage`).
+
+### Global flags
+
+| Flag | Where it goes | Meaning |
+|---|---|---|
+| `--silent` | Anywhere before the `--` argv divider (or before a subcommand) | Skip the audio cue for this invocation. The SMS still sends. Applies to the `--` wrap form and to `psst test`. |
+
+`--silent` is stripped out of argv before subcommand dispatch, so
+`psst test --silent "msg"` and `psst --silent test "msg"` behave the same —
+and a wrapped command that itself wants a literal `--silent` argument (after
+the `--` divider) still receives it untouched.
+
+### `psst -- <command> [args...]`
+
+Runs `<command>` to completion (resolved through `PATH`/`PATHEXT`, so bare
+`npm`/`yarn`/`tsc` `.cmd` shims launch correctly), captures its exit code and
+wall-clock elapsed time, then fires the notification pipeline — **regardless
+of whether the command passed or failed**, and even if the child process
+failed to start at all. `psst` returns the child's own exit code, so it stays
+transparent in a script or CI pipeline. A well-known Windows NTSTATUS failure
+code is translated to a readable label (e.g. `Ctrl-C`, `access violation`,
+`stack overflow`) instead of a raw signed integer.
+
+Ctrl-C is handled specially: Psst suppresses the default terminate-immediately
+behavior just long enough to still notify once the (already-Ctrl-C'd) child
+exits.
+
+### `psst test [message]`
+
+Fires a notification immediately, with no wrapped command. Uses the supplied
+`message`, or a default (`psst: test notification from MindAttic.Psst`) when
+none is given. Honors `--silent`.
+
+### `psst ping`
+
+Print-only diagnostic — sends nothing. Shows:
+
+- whether email-to-SMS is configured, and the `from` address if so
+- the configured recipient phone number / explicit recipient email
+- the effective fanout recipient list (one address per carrier gateway) and
+  how many gateways that resolves to
+- every configuration source path, marked found (`✓`) or not (`·`)
+- any partial-configuration diagnostics (e.g. "email is configured but
+  neither 'toEmail' nor 'to' is set")
+- setup hints (a ready-to-paste `providers.json` template) when no transport
+  is configured at all
+
+### `psst sound`
+
+Plays the embedded Psst clip and exits. No SMS, no wrapped command. Useful as
+a sanity check that audio playback works on this machine.
+
+### `psst contacts`
+
+Manage a small local address book so `psst sms` can target a name instead of a
+raw phone number.
+
+| Command | Effect |
+|---|---|
+| `psst contacts` or `psst contacts list` (alias `ls`) | List every contact, name-padded, with an optional `[via …]` suffix when a per-contact transport default is set. |
+| `psst contacts add <name> <phone>` | Add a contact. A case-insensitive name collision auto-suffixes to the next free `<name>N` (e.g. `ryan` → `ryan2`) and prints a warning rather than failing. |
+| `psst contacts rm <name>` (aliases `remove`, `del`) | Remove a contact by name (case-insensitive). Errors if no such contact exists. |
+
+Contacts persist to `%APPDATA%\MindAttic\Psst\contacts.json`:
+
+```json
+{
+  "contacts": [
+    { "name": "Ryan",  "phone": "+19203764617" },
+    { "name": "Alice", "phone": "+15551234567", "defaultVia": "email" }
+  ]
+}
+```
+
+`defaultVia` is optional; today the only valid value is `"email"` (the sole
+transport — see [Transport selection](#transport-selection-psst_via)).
+
+### `psst sms [flags] <to> <message...>`
+
+Send a one-off (or repeated/scheduled) SMS, independent of wrapping any
+command. No audio cue is played for `sms` sends.
+
+`<to>` resolves in this order:
+1. A case-insensitive contact-book name match.
+2. A bare US phone number (10 digits, optionally `+1`-prefixed, with the usual
+   punctuation stripped). Letters anywhere in the string (e.g. an extension
+   like `"1 ext 5551234567"`) reject the input outright rather than risk a
+   misparsed number.
+
+Anything matching neither is a hard error — Psst refuses to guess and send to
+a typo.
+
+See [Repeat & schedule](#repeat--schedule) for the `--repeat` / `--interval` /
+`--schedule` flags.
+
+### `psst scheduled` / `psst pending`
+
+Inspect and cancel deferred `sms` sends registered via `--schedule`/`--start`
+(directly, or implicitly via `--interval` — see below). `pending` is a plain
+alias for `scheduled`.
+
+| Command | Effect |
+|---|---|
+| `psst scheduled` or `psst scheduled list` (alias `ls`) | List every pending Psst Task Scheduler entry: next fire time, task name, recipient, message preview, and repeat/interval if any. |
+| `psst scheduled cancel <task-name>` (aliases `rm`, `delete`, `del`) | Delete one task + its launcher `.cmd` + its JSON sidecar. |
+| `psst scheduled clear` | Cancel every pending Psst task in one pass, reporting per-task success/failure. |
+
+Already-fired tasks never appear in the listing — they self-delete on
+completion (see [`PST-LAW-6`](docs/BIBLE.md#PST-LAW-6)).
 
 ## Repeat & schedule
 
@@ -128,7 +297,7 @@ psst sms jordan "ping" --repeat 12 --every 5m
 psst sms jordan "ping" --repeat 12 --every 5m --schedule now   # (illustrative)
 ```
 
-### How `--schedule` is implemented
+## How `--schedule` is implemented
 
 Under the hood, `--schedule` (and its alias `--start`):
 
@@ -138,7 +307,9 @@ Under the hood, `--schedule` (and its alias `--start`):
    `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that:
    - invokes `psst.exe sms …` with the original argv minus
      `--schedule` (so the deferred run doesn't recursively re-schedule)
-     and with `--repeat`/`--interval` preserved;
+     and with `--repeat`/`--interval` preserved, and with
+     `PSST_FROM_SCHEDULE=1` set so the deferred fire runs the send path
+     instead of re-registering itself;
    - then runs `schtasks /Delete /TN <task-name> /F` and removes the
      JSON sidecar — so successful runs leave nothing pending behind.
 3. Writes a JSON sidecar `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.json`
@@ -152,7 +323,7 @@ Under the hood, `--schedule` (and its alias `--start`):
 > from a bare `/SC ONCE`. The launcher self-deletes instead, achieving
 > the same effect with zero edge cases.
 
-## Inspecting & cancelling scheduled sends
+### Inspecting & cancelling scheduled sends
 
 ```text
 psst scheduled            # list all pending Psst tasks (alias: psst pending)
@@ -193,14 +364,71 @@ schtasks /Query /TN MindAttic.Psst.*    # tab-complete task name first
 schtasks /Delete /TN <task-name> /F     # cancel one
 ```
 
-## Setting up SMS
+## The notification pipeline
 
-Psst sends SMS via **email-to-SMS carrier fanout**. You need an SMTP account
-(Gmail app password, Outlook, or any relay) and your recipient's phone number.
-Psst fans the message out to every known US carrier gateway automatically —
-no carrier registration required.
+Every notification (whether from `-- <command>`, `test`, or an `sms` send)
+goes through `PsstNotifier.NotifyAsync`:
 
-### Wire the credentials into Psst
+1. Sound playback and SMS dispatch run **concurrently** (`Task.WhenAll`) — the
+   audio cue never delays the text, and vice versa.
+2. Sound is skipped when `--silent` was passed (or, for `sms`, always — `sms`
+   never plays the sound).
+3. SMS is dispatched through exactly one resolved transport (see
+   [`PST-LAW-4`](docs/BIBLE.md#PST-LAW-4)) — no silent fallback to a second
+   transport once the resolved one is configured.
+4. The caller gets back a `NotifyResult`: whether sound played, and the list
+   of SMS attempts (transport name + success/detail) so the CLI can print a
+   `✓`/`✗` line per attempt.
+
+Sound failure is always best-effort — it never fails the overall
+notification (`PST-LAW-2`).
+
+## Sound playback
+
+The embedded clip (`icq-uh-oh.mp3` / `icq-uh-oh.wav`, shipped inside the
+`MindAttic.Psst` assembly as embedded resources) plays via two transports,
+tried in order:
+
+1. **MP3 via NAudio** (`Mp3FileReader` + `WaveOutEvent`, WASAPI output).
+2. **WAV via `System.Media.SoundPlayer`** — pure managed fallback, no codec
+   dependency, used when the NAudio path fails (e.g. a missing ACM codec).
+
+On a non-Windows host, `PsstSoundPlayer.PlayAsync` returns a failure
+(`"not windows"`) rather than throwing — sound degrades silently everywhere
+except Windows, matching the fact that this project targets
+`net10.0-windows` only.
+
+## SMS transport: email-to-SMS carrier fanout
+
+Psst has exactly **one** SMS transport (`PsstVia.Email` — Twilio support was
+removed in [`PST-A3`](docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19)).
+It works by emailing the recipient's number, formatted as an address, at
+*every* known US carrier's email-to-SMS gateway domain:
+
+| Carrier (and MVNOs) | Gateway domain |
+|---|---|
+| T-Mobile (incl. former Sprint) | `tmomail.net` |
+| AT&T | `txt.att.net` |
+| Verizon | `vtext.com` |
+| US Cellular | `email.uscc.net` |
+| Boost Mobile | `sms.myboostmobile.com` |
+| Cricket Wireless | `sms.cricketwireless.net` |
+| MetroPCS | `mymetropcs.com` |
+| Google Fi | `msg.fi.google.com` |
+
+For a 10-digit number `5551234567`, the fanout is
+`5551234567@tmomail.net, 5551234567@txt.att.net, …` — one message per
+gateway. The wrong-carrier gateways silently drop the mail; the recipient's
+real carrier delivers it. Duplicate buzzes across gateways are an accepted
+cost of guaranteed delivery without needing to know (or ask) which carrier
+the number belongs to ([`PST-LAW-3`](docs/BIBLE.md#PST-LAW-3)). You can also
+pin one explicit address via `toEmail` (see below) — it's unioned with the
+auto-fanout list, deduplicated.
+
+Delivery itself is a real SMTP send via MailKit, using the SMTP account you
+configure below.
+
+## Setting up SMS credentials
 
 Psst reads from several sources, lowest → highest precedence:
 
@@ -211,7 +439,10 @@ Psst reads from several sources, lowest → highest precedence:
 | **settings.json** | `%APPDATA%\MindAttic\Psst\settings.json` | **primary**, outside the repo |
 | Environment variables | `MindAttic__Vault__Notifications__*` | CI / containers override |
 
-#### Option A — `settings.json` (recommended)
+All four sources ultimately populate one logical config section,
+`MindAttic:Vault:Notifications` (see [Configuration reference](#configuration-reference)).
+
+### Option A — `settings.json` (recommended)
 
 Create `%APPDATA%\MindAttic\Psst\settings.json`:
 
@@ -246,7 +477,7 @@ You can also pin a specific carrier gateway with `toEmail`:
 If both `to` and `toEmail` are set, the fanout and the explicit address are
 combined (deduplicated).
 
-#### Option B — Vault file (`providers.json`)
+### Option B — Vault file (`providers.json`)
 
 Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 
@@ -263,7 +494,7 @@ Create `%APPDATA%\MindAttic\Notifications\providers.json`:
 }
 ```
 
-#### Option C — Environment variables
+### Option C — Environment variables
 
 ```powershell
 $env:MindAttic__Vault__Notifications__email__smtpHost = "smtp.gmail.com"
@@ -280,3 +511,170 @@ $env:MindAttic__Vault__Notifications__to              = "+15555550101"
 psst ping     # lists each source path and whether it was found
 psst test     # sends a real SMS — check your phone
 ```
+
+## Configuration reference
+
+All email/recipient settings live under one `IConfiguration` section,
+`MindAttic:Vault:Notifications` (`PsstConfiguration.Section`):
+
+| Key | Type | Required? | Meaning |
+|---|---|---|---|
+| `email:smtpHost` | string | yes (if using email) | SMTP server hostname. |
+| `email:smtpPort` | int | no (default `587`) | Falls back to `587` for any unparseable/out-of-range (`≤0` or `>65535`) value, so a typo can't surface as a confusing `ConnectAsync` error. |
+| `email:username` | string | yes | SMTP auth username. |
+| `email:password` | string | yes | SMTP auth password (a Gmail **app password** for Gmail accounts). |
+| `email:from` | string | yes | The `From:` address on the outgoing SMTP message. |
+| `to` | string | one of `to`/`toEmail` | Recipient's US phone number (any punctuated form); auto-fanned-out across every carrier gateway. |
+| `toEmail` | string | one of `to`/`toEmail` | An explicit, pre-resolved carrier email-to-SMS address, unioned with the `to` fanout. |
+
+`PsstConfiguration.Load` returns `Email: null` if any of `smtpHost` /
+`username` / `password` / `from` is missing (all four missing → silently
+unconfigured; 1–3 missing → an entry appended to `Errors`, surfaced by
+`psst ping`). It also flags "email is configured but neither `toEmail` nor
+`to` is set" when you've wired SMTP creds but forgot a recipient.
+
+## Transport selection (`PSST_VIA`)
+
+`PsstVia` is currently a single-member enum (`Email`) — the abstraction
+(`ISmsClient`, `PsstVia`, `PsstViaResolver`, `PsstNotifier.BuildClients`) is
+kept general-shaped so a future transport slots in without a rewrite (see
+[`PST-A3`](docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19)),
+but today every code path resolves to `email`. Precedence, highest to
+lowest:
+
+1. `PSST_VIA` environment variable (only `email`, case-insensitive, is
+   recognized; anything else falls through).
+2. The target contact's `defaultVia` (set via `contacts.json`).
+3. Project default — `email`.
+
+## Contact book
+
+See [`psst contacts`](#psst-contacts) above for the CLI surface. Storage
+details:
+
+- File: `%APPDATA%\MindAttic\Psst\contacts.json` (next to `settings.json`,
+  intentionally outside the settings/User-Secrets chain so it's plain,
+  user-editable JSON).
+- Lookup (`ContactBook.Find`) tries a case-insensitive name match first, then
+  falls back to matching normalized phone digits.
+- Writes (`ContactStore.Save`) go through a temp-file-then-`File.Replace`
+  swap, so a crash mid-write can't truncate the file.
+
+## Build, test, publish
+
+```powershell
+# Restore + build (Release, matches CI)
+dotnet restore MindAttic.Psst.slnx
+dotnet build MindAttic.Psst.slnx --configuration Release --no-restore
+
+# Run the xUnit test suite
+dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Release --no-build
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs exactly this restore →
+build → test sequence on `windows-latest` with `.NET 10.0.x`, for every push
+and pull request against `main`, and uploads the `.trx` test results as a
+build artifact.
+
+Both shipped projects target `net10.0-windows`:
+
+| Project | Output | Role |
+|---|---|---|
+| `MindAttic.Psst` | `MindAttic.Psst` (library / NuGet package, `<Version>1.0.0</Version>`) | Notifier, transports, sound, configuration, contacts, duration/time parsing. |
+| `MindAttic.Psst.Cli` | `psst.exe` (`AssemblyName=psst`) | argv parsing, subcommand dispatch, Windows Task Scheduler integration. |
+| `MindAttic.Psst.Tests` | test assembly | xUnit test suite (100 tests as of the last verified BIBLE snapshot — see [BIBLE §6](docs/BIBLE.md#PST-§6)). |
+
+Versioning is **whole-number only** — `<Version>N.0.0</Version>`, bumped by
+major version alone, per `HOUSE-LAW-1`. There is currently no separate
+publish/pack script in this repo beyond the standard `dotnet build`/`dotnet
+pack` flow.
+
+After editing anything under `docs/`, regenerate and lint the Codex canon:
+
+```powershell
+powershell -File tools/codex.ps1 digest   # regenerate docs/BIBLE.digest.md
+powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited tests/paths, digest freshness
+```
+
+## Directory layout
+
+```text
+MindAttic.Psst/
+├── MindAttic.Psst/                  # library (net10.0-windows)
+│   ├── Configuration/                 PsstConfiguration, EmailSettings, PsstConfigurationSources
+│   ├── Contacts/                      Contact, ContactBook, ContactStore
+│   ├── Sms/                           ISmsClient, EmailSmsClient (MailKit), CarrierGateways
+│   ├── Sound/                         PsstSoundPlayer + embedded icq-uh-oh.mp3 / .wav
+│   ├── Time/                          DurationParser, TimeOfDayParser
+│   ├── PsstNotifier.cs                 orchestrates sound + SMS
+│   └── PsstVia.cs                      transport enum + PsstViaResolver
+├── MindAttic.Psst.Cli/               # psst.exe front door (net10.0-windows)
+│   ├── PsstCli.cs                      argv parsing, subcommand handlers
+│   ├── Program.cs                      entry point
+│   └── Scheduling/                     ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
+├── MindAttic.Psst.Tests/             # xUnit test project
+├── docs/
+│   ├── BIBLE.md                        L0 — architecture, Laws, verified state
+│   ├── AMENDMENTS.md                   L1 — append-only change log
+│   ├── USER_STORIES.md                 L2 — test-cited stories + backlog
+│   ├── BIBLE.digest.md                 GENERATED — never hand-edit
+│   └── rfc/                            design notes (open: RFC 0001)
+├── tools/
+│   ├── codex.ps1                       docs doctor/digest CLI
+│   └── build-readme.ps1                thin wrapper → shared codex-standard engine
+├── .github/workflows/ci.yml           restore → build → test on windows-latest
+├── index.htm, privacy.htm, terms.htm  static SMS-program pages (see below)
+├── README.md                          this file
+└── MindAttic.Psst.slnx
+```
+
+## Compliance pages
+
+Because Psst sends SMS, the repo ships the plain static pages carriers and
+SMS-registration processes expect, at the repo root (not generated from
+Markdown — do not overwrite them when regenerating `README.htm`):
+
+- **[index.htm](index.htm)** — landing page for the tool.
+- **[privacy.htm](privacy.htm)** — Privacy Policy. Summarizes that Psst is a
+  **single-user** tool: the account owner is the sole configurator and sole
+  recipient of any SMS it sends; the one phone number it stores lives only in
+  the local `%APPDATA%\MindAttic\Psst\settings.json` file
+  (`MindAttic:Vault:Notifications:to`), is used solely to deliver the owner's
+  own CLI-completion notifications, and is never sold or shared with third
+  parties.
+- **[terms.htm](terms.htm)** — SMS Terms & Conditions. Covers opt-in (editing
+  the same local settings file), the self-issued confirmation message,
+  typical message frequency (0–20/day, driven by the owner's own CLI
+  activity), standard `STOP`/`HELP` keyword handling, and that message/data
+  rates may apply per the owner's own carrier plan.
+
+## Glossary
+
+- **Wrap** — `psst -- <command>`: run a command to completion and notify on
+  exit.
+- **Transport (via)** — the channel a send uses. Currently only `email`
+  (carrier email-to-SMS); the `PsstVia` enum and `PsstViaResolver` are shaped
+  for future alternative transports.
+- **Fanout** — sending one email-to-SMS message to every known US carrier
+  gateway for a number, since the carrier is unknown.
+- **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that
+  delivers email as SMS.
+- **Sidecar** — the JSON metadata file written next to a scheduled launcher
+  `.cmd` so `psst scheduled` can render a meaningful listing.
+- **Launcher** — the self-deleting `.cmd` Task Scheduler runs to perform a
+  deferred send.
+- **Vault chain** — the `MindAttic.Vault` `IConfiguration` source order (vault
+  files → appsettings → `%APPDATA%` settings.json → env vars) credentials
+  resolve through.
+- **`PSST_FROM_SCHEDULE`** — env marker set by the launcher so a deferred send
+  doesn't recursively re-schedule itself.
+- **`PSST_VIA`** — env var that overrides transport selection for one send
+  (see [Transport selection](#transport-selection-psst_via)).
+
+---
+
+For architecture, the project's Laws, and verified build/test evidence, see
+**[docs/BIBLE.md](docs/BIBLE.md)**. For the change history, see
+**[docs/AMENDMENTS.md](docs/AMENDMENTS.md)**. For the story-by-story backlog
+and which behaviors are test-verified vs. manual-only, see
+**[docs/USER_STORIES.md](docs/USER_STORIES.md)**.
