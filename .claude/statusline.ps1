@@ -1,14 +1,14 @@
-<#
-  Statusline - live context-window gauge with escalating checkpoint warnings.
+﻿<#
+  Statusline - live context-window gauge with escalating quicksave warnings.
 
   Claude Code pipes a JSON status blob to this script on stdin every render. We surface the
   usual bearings (model / folder / git branch) plus a context-usage segment that escalates as
-  the window fills, so there is time to run /checkpoint and /clear WITH ROOM TO SPARE before the
+  the window fills, so there is time to run /quicksave and /clear WITH ROOM TO SPARE before the
   harness auto-compacts.
 
   Thresholds (percent of context used) - tune these two numbers to taste:
-    WARN  -> "[!] checkpoint soon"   (amber)
-    CRIT  -> "[!!] /checkpoint NOW"  (red, bold)
+    WARN  -> "[!] quicksave soon"   (amber)
+    CRIT  -> "[!!] /quicksave NOW"  (red, bold)
   Defaults leave real headroom below the ~95% auto-compaction point.
 
   Notes: used_percentage counts input tokens only and is null before the first API call and
@@ -57,9 +57,9 @@ if ($j -and $j.context_window -and $null -ne $j.context_window.used_percentage) 
 if ($null -eq $pct) {
   $ctx = "${dim}ctx --%${reset}"
 } elseif ($pct -ge $CRIT) {
-  $ctx = "${red}[!!] ctx ${pct}% - /checkpoint NOW${reset}"
+  $ctx = "${red}[!!] ctx ${pct}% - /quicksave NOW${reset}"
 } elseif ($pct -ge $WARN) {
-  $ctx = "${amber}[!] ctx ${pct}% - checkpoint soon${reset}"
+  $ctx = "${amber}[!] ctx ${pct}% - quicksave soon${reset}"
 } else {
   $ctx = "${green}ctx ${pct}%${reset}"
 }

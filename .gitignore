@@ -1,6 +1,6 @@
-bin/
+﻿bin/
 obj/
 *.user
 *.suo
 .vs/
-.claude/checkpoint.md
+.claude/quicksave.md

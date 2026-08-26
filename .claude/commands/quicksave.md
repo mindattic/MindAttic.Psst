@@ -1,20 +1,20 @@
 ---
-description: Print the current discussion to a paper transcript, so it survives /clear and auto-refills on the next session.
+description: Print the current discussion to a paper transcript, so it survives /clear and restores on 'do' or /quickload.
 argument-hint: "[optional note to emphasize what matters most]"
 allowed-tools: Write
 ---
 
-# Checkpoint — the paper transcript
+# Quicksave — the paper transcript
 
 Person-of-Interest protocol: the context window is about to be wiped by `/clear`. Before it is,
-print the live discussion to a "paper transcript" on disk. A SessionStart hook (matcher `clear`)
-re-ingests that transcript the instant `/clear` runs, so the next session wakes up already
-knowing what we were doing. The transcript is consumed on read — one-shot, no residue.
+print the live discussion to a "paper transcript" on disk. On the other side of the wipe, the
+next session restores it when the user types a bare `do` (a UserPromptSubmit hook injects the
+transcript) or runs `/quickload`. The transcript is consumed on read — one-shot, no residue.
 
 ## Do this now
 
-Write a handoff file to **`.claude/checkpoint.md` in the current project root** — construct the
-absolute path from your current working directory (`<cwd>\.claude\checkpoint.md`). Overwrite it if
+Write a handoff file to **`.claude/quicksave.md` in the current project root** — construct the
+absolute path from your current working directory (`<cwd>\.claude\quicksave.md`). Overwrite it if
 it exists.
 
 Capture the *current* discussion — not the whole session, just what a fresh instance of you needs
@@ -23,7 +23,7 @@ to resume seamlessly. Be concrete: names, ids, file paths, exact commands. No va
 Use this structure:
 
 ```markdown
-# Checkpoint — <one-line title of what we're doing>
+# Quicksave — <one-line title of what we're doing>
 _Printed: <fill the actual date>_
 
 ## Current task
@@ -54,5 +54,5 @@ thread is unmistakable after the wipe.
 
 ## After writing
 
-Tell the user, in one line, that the transcript is printed and armed, and to run `/clear` now —
-the discussion will refill automatically on the other side. Do not do anything else.
+Tell the user, in one line, that the quicksave is written and armed: run `/clear`, then type
+`do` (or `/quickload`) on the other side to restore. Do not do anything else.
