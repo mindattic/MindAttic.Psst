@@ -3,8 +3,9 @@
 
   After /quicksave + /clear, the next session restores by typing "do" (this hook) or running
   /quickload (the command). Any other prompt passes through untouched. Reads
-  <repo>\.claude\quicksave.md, injects it as authoritative resume context, then DELETES it so
-  the refill is one-shot. Person-of-Interest protocol: the Machine reloads its printed stack.
+  <repo>\.claude\quicksave.md, injects it as authoritative resume context, then ARCHIVES it
+  (renamed to .001, shifting older archives up by one) so the refill is one-shot but nothing is
+  ever deleted. Person-of-Interest protocol: the Machine reloads its printed stack, then files it.
 
   Emits Claude Code hook JSON on stdout. PowerShell 5.1 / Win-1252 safe: every non-ASCII char
   is escaped to \uXXXX so the JSON is pure ASCII. Emits {} whenever there is nothing to do.
@@ -24,8 +25,20 @@ $save     = Join-Path $repoRoot '.claude\quicksave.md'
 
 if (-not (Test-Path $save)) { Write-Output '{}'; exit 0 }
 $body = Get-Content -LiteralPath $save -Raw -Encoding UTF8
+
+# Archive instead of delete: shift any existing .NNN archives up by one, then file this save as
+# .001. Nothing /quicksave ever wrote is destroyed by /quickload or the "do" hook.
+function Move-ToArchive([string]$path) {
+  $n = 1
+  while (Test-Path -LiteralPath ('{0}.{1:D3}' -f $path, $n)) { $n++ }
+  for ($i = $n - 1; $i -ge 1; $i--) {
+    Move-Item -LiteralPath ('{0}.{1:D3}' -f $path, $i) -Destination ('{0}.{1:D3}' -f $path, ($i + 1)) -Force
+  }
+  Move-Item -LiteralPath $path -Destination ('{0}.001' -f $path) -Force
+}
+
 if ([string]::IsNullOrWhiteSpace($body)) {
-  Remove-Item -LiteralPath $save -Force -ErrorAction SilentlyContinue
+  Move-ToArchive $save
   Write-Output '{}'; exit 0
 }
 
@@ -35,7 +48,7 @@ was wiped since this was printed. The block below is the quicksave describing ex
 were doing. Treat it as your working memory for this session: pick up the Current task, honor
 the Decisions locked, and continue from Next concrete steps without re-asking what was already
 settled. Open by briefly confirming to the user what you're resuming, then keep going. This
-transcript has been consumed (deleted) - it will not refill again.
+transcript has been archived (renamed to .001, not deleted) - it will not refill on its own.
 
 '@
 
@@ -64,9 +77,9 @@ foreach ($ch in $text.ToCharArray()) {
 }
 $escaped = $sb.ToString()
 
-# Consume the transcript (one-shot) BEFORE emitting, so a crash mid-emit can't leave it to
-# ambush a later "do".
-Remove-Item -LiteralPath $save -Force -ErrorAction SilentlyContinue
+# Archive the transcript (one-shot for resume) BEFORE emitting, so a crash mid-emit can't leave
+# it to ambush a later "do". Nothing is ever deleted - it becomes quicksave.md.001.
+Move-ToArchive $save
 
 $json = '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"' + $escaped + '"}}'
 Write-Output $json

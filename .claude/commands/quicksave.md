@@ -1,21 +1,33 @@
 ---
 description: Print the current discussion to a paper transcript, so it survives /clear and restores on 'do' or /quickload.
 argument-hint: "[optional note to emphasize what matters most]"
-allowed-tools: Write
+allowed-tools: Write, Read, PowerShell, Bash
 ---
 
 # Quicksave — the paper transcript
 
 Person-of-Interest protocol: the context window is about to be wiped by `/clear`. Before it is,
 print the live discussion to a "paper transcript" on disk. On the other side of the wipe, the
-next session restores it when the user types a bare `do` (a UserPromptSubmit hook injects the
-transcript) or runs `/quickload`. The transcript is consumed on read — one-shot, no residue.
+next session restores it when the user types a bare `do` (a prompt-submit hook injects the
+transcript) or runs `/quickload`. The transcript is archived on read, never deleted — nothing
+printed by `/quicksave` is ever thrown away.
 
 ## Do this now
 
-Write a handoff file to **`.claude/quicksave.md` in the current project root** — construct the
-absolute path from your current working directory (`<cwd>\.claude\quicksave.md`). Overwrite it if
-it exists.
+Write a handoff file to **`.claude\quicksave.md` in the current project root** — construct the
+absolute path from your current working directory (`<cwd>\.claude\quicksave.md`).
+
+**Never delete or silently overwrite an existing quicksave.** If `.claude\quicksave.md` already
+exists (an earlier save nobody consumed yet), archive it first — the same rotation `/quickload`
+uses when it consumes one:
+
+1. Find the highest existing `.claude\quicksave.md.NNN` (zero-padded, `.001`, `.002`, ...).
+2. Starting from the highest number down to `001`, rename each `quicksave.md.NNN` to
+   `quicksave.md.(NNN+1)` (shift everything up by one so nothing collides).
+3. Rename the current `quicksave.md` to `quicksave.md.001`.
+4. Now write the fresh transcript to the now-clear `quicksave.md`.
+
+If none exists yet, just write it directly.
 
 Capture the *current* discussion — not the whole session, just what a fresh instance of you needs
 to resume seamlessly. Be concrete: names, ids, file paths, exact commands. No vague summaries.
