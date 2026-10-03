@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: digest
 status: living
-updated: 2026-06-19
+updated: 2026-10-03
 generatedFrom: docs/BIBLE.md
 ---
 

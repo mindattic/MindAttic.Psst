@@ -1,14 +1,7 @@
-Deploy the MindAttic.Psst landing page (`mindattic.com/mindatticpsst.htm`) via **MindAttic.Deploy** (sibling repo at `D:\Projects\MindAttic\MindAttic.Deploy`).
+# /deploy -- no web deploy
 
-Renders this repo's `README.md` through the catalog template and FTPS-uploads the single-file result.
+**MindAttic.Psst has no web deploy.** Its README on GitHub -- https://github.com/mindattic/MindAttic.Psst -- is the project page. To update the project page, edit `README.md` and push to `main`.
 
-Run this command and report the result:
+The README-driven landing page `mindattic.com/mindatticpsst.htm` was retired together with MindAttic.Deploy's catalog mode (amendment DEP-A6 in `MindAttic.Deploy/docs/AMENDMENTS.md`, 2026-10-03). `npm run deploy -- --only mindatticpsst` is now rejected, so do not run MindAttic.Deploy for this project.
 
-```
-powershell -NoProfile -ExecutionPolicy Bypass -Command "cd D:\Projects\MindAttic\MindAttic.Deploy; npm run deploy -- --only mindatticpsst"
-```
-
-Notes:
-- Catalog entry: `MindAttic.Deploy/projects.json` -> `projects[]` slug `mindatticpsst` (theme: Cyberspace).
-- Credentials: `MindAttic.Deploy/secrets/ftp.json` (gitignored).
-- MindAttic.Psst itself is a CLI tool (no app deploy target) -- this command only ships the landing page.
+When invoked, tell the user the above and stop.

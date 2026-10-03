@@ -4,10 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MindAttic.Psst</title>
-<meta name="description" content="Stop babysitting your terminal. Psst taps you on the shoulder the moment
- a long-running command finishes — a sound at your desk, a text on your phone.">
+<meta name="description" content="Stop babysitting your terminal. Psst taps you on the shoulder the moment a long-running command finishes — a sound at your desk, a text on your phone.">
 <meta name="generator" content="MindAttic Codex build-readme.ps1">
-<meta name="generated" content="2026-08-14">
+<meta name="generated" content="2026-10-03">
 <style>:root{
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
   --border:#30363d;
@@ -112,56 +111,75 @@ pre:hover .cpbtn{opacity:1}
   </nav>
   <main id="content">
 <h1 id="mindatticpsst">MindAttic.Psst</h1>
-<blockquote><p><strong>Stop babysitting your terminal.</strong> Psst taps you on the shoulder the moment a long-running command finishes — a sound at your desk, a text on your phone.</p></blockquote>
-<pre><code class="language-text">psst -- dotnet test
-psst -- npm run build
-psst -- terraform apply</code></pre>
-<p>When the command exits, Psst plays a short attention-getter clip locally and sends you an SMS with the command name, exit status, and elapsed time — whether it succeeded or failed.</p>
-<p>Full architecture, rationale, and the project's Laws live in <strong><a href="docs/BIBLE.md">docs/BIBLE.md</a></strong> — this README is the how-to-build/run/use companion. See also <strong><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a></strong> (append-only change log) and <strong><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a></strong> (test-cited story backlog). SMS-compliance pages: <strong><a href="privacy.htm">privacy.htm</a></strong> · <strong><a href="terms.htm">terms.htm</a></strong>.</p>
-<h2 id="table-of-contents">Table of contents</h2>
+<p>Stop babysitting your terminal. Psst taps you on the shoulder the moment a long-running command finishes — a sound at your desk, a text on your phone.</p>
+<p><img src="https://img.shields.io/badge/C%23-.NET%2010-512BD4" alt="C#"> <img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"> <img src="https://img.shields.io/badge/type-CLI-informational" alt="Type"> <img src="https://img.shields.io/badge/status-active-brightgreen" alt="Status"></p>
+<pre><code class="language-text">PS&gt; psst -- dotnet test
+  ... your command's own output ...
+psst: C:\Program Files\dotnet\dotnet.exe — OK in 12m04s
+  ♪ played Psst
+  ✓ Email-to-SMS: sent to 8/8 (5555550101@tmomail.net, 5555550101@txt.att.net, ...)</code></pre>
+<p>The output shape above comes straight from the CLI's format strings (<code>PsstCli.WrapAsync</code> and <code>Notify</code>); the same line arrives on your phone as a text. Psst is a command-line tool, so there is no screenshot.</p>
+<h2 id="why">Why</h2>
 <ul>
-<li><a href="#why-psst">Why Psst</a></li>
-<li><a href="#opt-in-only--read-this-before-wiring-it-into-anything">Opt-in only — read this before wiring it into anything</a></li>
-<li><a href="#what-it-is--what-it-is-not">What it is / what it is NOT</a></li>
-<li><a href="#cli-reference">CLI reference</a><ul><li><a href="#global-flags">Global flags</a></li><li><a href="#psst----command-args"><code>psst -- &lt;command&gt;</code></a></li><li><a href="#psst-test-message"><code>psst test</code></a></li><li><a href="#psst-ping"><code>psst ping</code></a></li><li><a href="#psst-sound"><code>psst sound</code></a></li><li><a href="#psst-contacts"><code>psst contacts</code></a></li><li><a href="#psst-sms-flags-to-message"><code>psst sms</code></a></li><li><a href="#psst-scheduled--psst-pending"><code>psst scheduled</code> / <code>psst pending</code></a></li></ul></li>
-<li><a href="#repeat--schedule">Repeat &amp; schedule</a></li>
-<li><a href="#how---schedule-is-implemented">How <code>--schedule</code> is implemented</a></li>
-<li><a href="#the-notification-pipeline">The notification pipeline</a></li>
-<li><a href="#sound-playback">Sound playback</a></li>
-<li><a href="#sms-transport-email-to-sms-carrier-fanout">SMS transport: email-to-SMS carrier fanout</a></li>
-<li><a href="#setting-up-sms-credentials">Setting up SMS credentials</a></li>
-<li><a href="#configuration-reference">Configuration reference</a></li>
-<li><a href="#transport-selection-psst_via">Transport selection (<code>PSST_VIA</code>)</a></li>
-<li><a href="#contact-book">Contact book</a></li>
-<li><a href="#build-test-publish">Build, test, publish</a></li>
-<li><a href="#directory-layout">Directory layout</a></li>
-<li><a href="#compliance-pages">Compliance pages</a></li>
-<li><a href="#glossary">Glossary</a></li>
+<li>Kick off a 12-minute build, switch to your inbox, and get pinged when it is actually done instead of flicking back to the terminal every thirty seconds.</li>
+<li>Know without looking: the text tells you what ran, whether it passed, and how long it took. Stay in the meeting; glance at your phone.</li>
+<li>Wrap anything that runs in a shell: builds, tests, deploys, migrations, long <code>curl</code> calls, training runs.</li>
+<li>Nothing to babysit in return: one CLI, no daemon, no tray icon, nothing listening on a port.</li>
+<li>Texts arrive without carrier registration: your number is fanned out to every known US carrier email-to-SMS gateway.</li>
+<li>Credentials stay out of the repo, resolved through the shared MindAttic.Vault chain (<code>%APPDATA%</code> files or environment variables).</li>
 </ul>
-<h2 id="why-psst">Why Psst</h2>
+<h2 id="features">Features</h2>
 <ul>
-<li><strong>Reclaim your focus.</strong> Kick off a 12-minute build, switch to your inbox, get pinged when it's actually done. No more flicking back to the terminal every   thirty seconds.</li>
-<li><strong>Know without looking.</strong> The SMS tells you <em>what</em> ran, whether it <em>passed</em>, and <em>how long</em> it took. Stay in the meeting; glance at your phone.</li>
-<li><strong>Works with anything.</strong> If it runs in a shell, Psst can wrap it — builds, tests, deploys, migrations, long <code>curl</code>s, ML training runs.</li>
-<li><strong>No daemon, no service.</strong> Just a single CLI. Nothing in the background, nothing listening on a port, nothing to babysit.</li>
-<li><strong>SMS that actually arrives.</strong> Email-to-SMS carrier fanout fans your number out to every known US carrier gateway — no registration required.</li>
-<li><strong>Credentials stay yours.</strong> Secrets live outside the repo via the shared <code>MindAttic.Vault</code> chain — <code>%APPDATA%\MindAttic\Notifications\providers.json</code>,   <code>%APPDATA%\MindAttic\Psst\settings.json</code>, or environment variables. Never   checked into source control.</li>
+<li>Wrap a command with <code>psst -- &lt;command&gt;</code>: Psst runs it to completion, then notifies whether it passed, failed, or never started. It returns the child's own exit code, so it stays transparent in scripts.</li>
+<li>Readable failures: well-known Windows NTSTATUS exit codes become labels such as <code>Ctrl-C</code>, <code>access violation</code> or <code>stack overflow</code> instead of raw negative integers.</li>
+<li>Ctrl-C still notifies: Psst suppresses the default terminate-immediately handler just long enough to report once the cancelled child exits.</li>
+<li>Sound and text in parallel: the local clip and the SMS dispatch run concurrently, so neither delays the other. Sound failure never fails the notification.</li>
+<li>One-off texts with <code>psst sms</code>, addressed by contact name or a bare US number. Unknown names and malformed numbers are hard errors; Psst never guesses.</li>
+<li>Repeat and schedule: drip a message N times at an interval, defer it to a wall-clock time through Windows Task Scheduler, or both. Scheduled tasks clean up after themselves.</li>
+<li>A small local contact book (<code>psst contacts</code>) with crash-safe writes.</li>
+<li><code>psst ping</code> diagnoses configuration without sending anything; <code>psst sound</code> checks audio on its own.</li>
 </ul>
-<h2 id="opt-in-only-read-this-before-wiring-it-into-anything">Opt-in only — read this before wiring it into anything</h2>
-<p><strong><code>psst</code> is invoked only when a human explicitly asks to be notified — never auto-wrapped around a command by a script, an agent, or another tool.</strong> This is an org-wide rule (<code>HOUSE-LAW-9</code> in <a href="../MindAttic.HouseRules.md#HOUSE-LAW-9"><code>../MindAttic.HouseRules.md</code></a>), and it exists specifically because Psst is easy to over-apply: it plays an audible sound at the operator's desk and sends a real SMS to a real phone, so silently wrapping "helpful" commands in <code>psst -- …</code> is a footgun, not a convenience. If you are an AI coding agent operating in this workspace (or any MindAttic repo): do not prepend <code>psst --</code> to shell commands unless the user's own message asked for a Psst notification ("run this with psst", "notify me when this finishes via psst"). Every other invocation — <code>psst test</code>, <code>psst sms</code>, <code>psst ping</code>, etc. — is likewise something a human runs deliberately, not something another tool should trigger on its behalf.</p>
-<h2 id="what-it-is-what-it-is-not">What it is / what it is NOT</h2>
-<p>See <a href="docs/BIBLE.md#PST-§1">BIBLE §1–§3</a> for the full canon. In short:</p>
+<h2 id="quick-start">Quick start</h2>
+<p>Prerequisites: Windows, the .NET 10 SDK, and an SMTP account (for Gmail, an app password).</p>
+<pre><code class="language-powershell">git clone https://github.com/mindattic/MindAttic.Psst.git
+cd MindAttic.Psst
+dotnet build MindAttic.Psst.slnx --configuration Release</code></pre>
+<p>Create <code>%APPDATA%\MindAttic\Psst\settings.json</code> (see <a href="#setting-up-sms-credentials">Setting up SMS credentials</a> for the other options):</p>
+<pre><code class="language-json">{
+  "MindAttic": {
+    "Vault": {
+      "Notifications": {
+        "email": {
+          "smtpHost": "smtp.gmail.com",
+          "smtpPort": 587,
+          "username": "you@gmail.com",
+          "password": "app-password",
+          "from":     "you@gmail.com"
+        },
+        "to": "+15555550101"
+      }
+    }
+  }
+}</code></pre>
+<p>Then check and fire one, using <code>psst.exe</code> from <code>MindAttic.Psst.Cli\bin\Release\net10.0-windows\</code> (or put that folder on your <code>PATH</code>):</p>
+<pre><code class="language-powershell">psst ping                 # lists each config source and whether it was found
+psst test                 # sends a real SMS and plays the clip
+psst -- dotnet test       # the real thing</code></pre>
+<h2 id="opt-in-only">Opt-in only</h2>
+<p>Psst is invoked only when a human explicitly asks to be notified, never auto-wrapped around a command by a script, an agent, or another tool. This is the org-wide rule HOUSE-LAW-9 in the MindAttic house rules, and it exists because Psst is easy to over-apply: it plays an audible sound at the operator's desk and sends a real SMS to a real phone. If you are an AI coding agent working in any MindAttic repo, do not prepend <code>psst --</code> to shell commands unless the user's own message asked for a Psst notification ("run this with psst", "notify me when this finishes via psst"). Every other invocation (<code>psst test</code>, <code>psst sms</code>, <code>psst ping</code> and so on) is likewise something a human runs deliberately.</p>
+<h2 id="what-it-is-and-is-not">What it is and is not</h2>
+<p>See <a href="docs/BIBLE.md#PST-§1">BIBLE sections 1 to 3</a> for the full canon. In short:</p>
 <ul>
-<li><strong>IS</strong>: a one-shot Windows CLI (<code>psst.exe</code>) plus the library behind it (<code>MindAttic.Psst</code>, <code>net10.0-windows</code>) that plays a local sound and/or sends an   SMS, on demand or when a wrapped command exits.</li>
-<li><strong>IS NOT</strong>: a background daemon, a system-tray app, a cross-platform tool, a general chat/messaging platform, a multi-transport fan-out engine (it fans   out across <em>carrier gateways</em> for one number, not across transports), or a   secret store.</li>
+<li>It is a one-shot Windows CLI (<code>psst.exe</code>) plus the library behind it (<code>MindAttic.Psst</code>, <code>net10.0-windows</code>) that plays a local sound and/or sends an SMS, on demand or when a wrapped command exits.</li>
+<li>It is not a background daemon, a system-tray app, a cross-platform tool, a general messaging platform, a multi-transport fan-out engine (it fans out across carrier gateways for one number, not across transports), or a secret store.</li>
 </ul>
-<h2 id="cli-reference">CLI reference</h2>
+<h2 id="commands">Commands</h2>
 <pre><code class="language-text">psst -- &lt;command&gt; [args...]                Run a command. Play Psst + SMS when it exits.
 psst test [message]                        Fire a notification right now.
 psst ping                                  Show which SMS transports are configured.
 psst sound                                 Just play the Psst sound.
 psst contacts [list|add|rm]                Manage the contact book.
-psst sms [flags] &lt;to&gt; &lt;message...&gt;         Send a one-off SMS (see "Repeat &amp; schedule" below).
+psst sms [flags] &lt;to&gt; &lt;message...&gt;         Send a one-off SMS (see "Repeat and schedule").
 psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends.
 psst pending                               Alias for `psst scheduled`.</code></pre>
 <p>Running <code>psst</code> with no arguments, or <code>psst -h</code> / <code>--help</code> / <code>help</code> / <code>/?</code>, prints the built-in usage summary (<code>PsstCli.PrintUsage</code>).</p>
@@ -177,25 +195,25 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <td>Skip the audio cue for this invocation. The SMS still sends. Applies to the <code>--</code> wrap form and to <code>psst test</code>.</td>
 </tr>
 </tbody></table>
-<p><code>--silent</code> is stripped out of argv before subcommand dispatch, so <code>psst test --silent "msg"</code> and <code>psst --silent test "msg"</code> behave the same — and a wrapped command that itself wants a literal <code>--silent</code> argument (after the <code>--</code> divider) still receives it untouched.</p>
-<h3 id="psst-args"><code>psst -- &lt;command&gt; [args...]</code></h3>
-<p>Runs <code>&lt;command&gt;</code> to completion (resolved through <code>PATH</code>/<code>PATHEXT</code>, so bare <code>npm</code>/<code>yarn</code>/<code>tsc</code> <code>.cmd</code> shims launch correctly), captures its exit code and wall-clock elapsed time, then fires the notification pipeline — <strong>regardless of whether the command passed or failed</strong>, and even if the child process failed to start at all. <code>psst</code> returns the child's own exit code, so it stays transparent in a script or CI pipeline. A well-known Windows NTSTATUS failure code is translated to a readable label (e.g. <code>Ctrl-C</code>, <code>access violation</code>, <code>stack overflow</code>) instead of a raw signed integer.</p>
-<p>Ctrl-C is handled specially: Psst suppresses the default terminate-immediately behavior just long enough to still notify once the (already-Ctrl-C'd) child exits.</p>
-<h3 id="psst-test-message"><code>psst test [message]</code></h3>
-<p>Fires a notification immediately, with no wrapped command. Uses the supplied <code>message</code>, or a default (<code>psst: test notification from MindAttic.Psst</code>) when none is given. Honors <code>--silent</code>.</p>
-<h3 id="psst-ping"><code>psst ping</code></h3>
-<p>Print-only diagnostic — sends nothing. Shows:</p>
+<p><code>--silent</code> is stripped out of argv before subcommand dispatch, so <code>psst test --silent "msg"</code> and <code>psst --silent test "msg"</code> behave the same, and a wrapped command that itself wants a literal <code>--silent</code> argument (after the <code>--</code> divider) still receives it untouched.</p>
+<h3 id="wrapping-a-command">Wrapping a command</h3>
+<p><code>psst -- &lt;command&gt; [args...]</code> runs <code>&lt;command&gt;</code> to completion (resolved through <code>PATH</code>/<code>PATHEXT</code>, so bare <code>npm</code>/<code>yarn</code>/<code>tsc</code> <code>.cmd</code> shims launch correctly), captures its exit code and wall-clock elapsed time, then fires the notification pipeline regardless of whether the command passed or failed, and even if the child process failed to start at all. <code>psst</code> returns the child's own exit code (or <code>2</code> if the child could not be started). The message reads <code>psst: &lt;command&gt; — OK in &lt;elapsed&gt;</code> or <code>psst: &lt;command&gt; — FAIL (&lt;reason&gt;) in &lt;elapsed&gt;</code>.</p>
+<p>Ctrl-C is handled specially: Psst suppresses the default terminate-immediately behaviour just long enough to still notify once the (already-cancelled) child exits.</p>
+<h3 id="psst-test">psst test</h3>
+<p>Fires a notification immediately, with no wrapped command. Uses the supplied <code>message</code>, or a default (<code>psst: test notification from MindAttic.Psst</code>) when none is given. Honours <code>--silent</code>.</p>
+<h3 id="psst-ping">psst ping</h3>
+<p>A print-only diagnostic that sends nothing. It shows:</p>
 <ul>
 <li>whether email-to-SMS is configured, and the <code>from</code> address if so</li>
-<li>the configured recipient phone number / explicit recipient email</li>
+<li>the configured recipient phone number and explicit recipient email</li>
 <li>the effective fanout recipient list (one address per carrier gateway) and how many gateways that resolves to</li>
-<li>every configuration source path, marked found (<code>✓</code>) or not (<code>·</code>)</li>
-<li>any partial-configuration diagnostics (e.g. "email is configured but neither 'toEmail' nor 'to' is set")</li>
+<li>every configuration source path, marked found or not</li>
+<li>any partial-configuration diagnostics (for example "email is configured but neither 'toEmail' nor 'to' is set")</li>
 <li>setup hints (a ready-to-paste <code>providers.json</code> template) when no transport is configured at all</li>
 </ul>
-<h3 id="psst-sound"><code>psst sound</code></h3>
+<h3 id="psst-sound">psst sound</h3>
 <p>Plays the embedded Psst clip and exits. No SMS, no wrapped command. Useful as a sanity check that audio playback works on this machine.</p>
-<h3 id="psst-contacts"><code>psst contacts</code></h3>
+<h3 id="psst-contacts">psst contacts</h3>
 <p>Manage a small local address book so <code>psst sms</code> can target a name instead of a raw phone number.</p>
 <table><thead><tr>
 <th>Command</th>
@@ -207,7 +225,7 @@ psst pending                               Alias for `psst scheduled`.</code></p
 </tr>
 <tr>
 <td><code>psst contacts add &lt;name&gt; &lt;phone&gt;</code></td>
-<td>Add a contact. A case-insensitive name collision auto-suffixes to the next free <code>&lt;name&gt;N</code> (e.g. <code>ryan</code> → <code>ryan2</code>) and prints a warning rather than failing.</td>
+<td>Add a contact. A case-insensitive name collision auto-suffixes to the next free <code>&lt;name&gt;N</code> (for example <code>ryan</code> becomes <code>ryan2</code>) and prints a warning rather than failing.</td>
 </tr>
 <tr>
 <td><code>psst contacts rm &lt;name&gt;</code> (aliases <code>remove</code>, <code>del</code>)</td>
@@ -217,22 +235,21 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <p>Contacts persist to <code>%APPDATA%\MindAttic\Psst\contacts.json</code>:</p>
 <pre><code class="language-json">{
   "contacts": [
-    { "name": "Ryan",  "phone": "+19203764617" },
-    { "name": "Alice", "phone": "+15551234567", "defaultVia": "email" }
+    { "name": "Jordan", "phone": "+15555550123" },
+    { "name": "Alice",  "phone": "+15551234567", "defaultVia": "email" }
   ]
 }</code></pre>
-<p><code>defaultVia</code> is optional; today the only valid value is <code>"email"</code> (the sole transport — see <a href="#transport-selection-psst_via">Transport selection</a>).</p>
-<h3 id="psst-sms-flags"><code>psst sms [flags] &lt;to&gt; &lt;message...&gt;</code></h3>
-<p>Send a one-off (or repeated/scheduled) SMS, independent of wrapping any command. No audio cue is played for <code>sms</code> sends.</p>
+<p><code>defaultVia</code> is optional; today the only valid value is <code>"email"</code> (the sole transport, see <a href="#transport-selection">Transport selection</a>).</p>
+<h3 id="psst-sms">psst sms</h3>
+<p><code>psst sms [flags] &lt;to&gt; &lt;message...&gt;</code> sends a one-off (or repeated or scheduled) SMS, independent of wrapping any command. No audio cue is played for <code>sms</code> sends.</p>
 <p><code>&lt;to&gt;</code> resolves in this order:</p>
 <ol>
 <li>A case-insensitive contact-book name match.</li>
-<li>A bare US phone number (10 digits, optionally <code>+1</code>-prefixed, with the usual punctuation stripped). Letters anywhere in the string (e.g. an extension    like <code>"1 ext 5551234567"</code>) reject the input outright rather than risk a    misparsed number.</li>
+<li>A bare US phone number (10 digits, optionally <code>+1</code>-prefixed, with the usual punctuation stripped). Letters anywhere in the string (for example an extension like <code>"1 ext 5551234567"</code>) reject the input outright rather than risk a misparsed number.</li>
 </ol>
-<p>Anything matching neither is a hard error — Psst refuses to guess and send to a typo.</p>
-<p>See <a href="#repeat--schedule">Repeat &amp; schedule</a> for the <code>--repeat</code> / <code>--interval</code> / <code>--schedule</code> flags.</p>
-<h3 id="psst-scheduled-psst-pending"><code>psst scheduled</code> / <code>psst pending</code></h3>
-<p>Inspect and cancel deferred <code>sms</code> sends registered via <code>--schedule</code>/<code>--start</code> (directly, or implicitly via <code>--interval</code> — see below). <code>pending</code> is a plain alias for <code>scheduled</code>.</p>
+<p>Anything matching neither is a hard error: Psst refuses to guess and send to a typo. See <a href="#repeat-and-schedule">Repeat and schedule</a> for the <code>--repeat</code>, <code>--interval</code> and <code>--schedule</code> flags.</p>
+<h3 id="psst-scheduled-and-psst-pending">psst scheduled and psst pending</h3>
+<p>Inspect and cancel deferred <code>sms</code> sends registered via <code>--schedule</code>/<code>--start</code> (directly, or implicitly via <code>--interval</code>). <code>pending</code> is a plain alias for <code>scheduled</code>.</p>
 <table><thead><tr>
 <th>Command</th>
 <th>Effect</th>
@@ -243,16 +260,16 @@ psst pending                               Alias for `psst scheduled`.</code></p
 </tr>
 <tr>
 <td><code>psst scheduled cancel &lt;task-name&gt;</code> (aliases <code>rm</code>, <code>delete</code>, <code>del</code>)</td>
-<td>Delete one task + its launcher <code>.cmd</code> + its JSON sidecar.</td>
+<td>Delete one task plus its launcher <code>.cmd</code> and its JSON sidecar.</td>
 </tr>
 <tr>
 <td><code>psst scheduled clear</code></td>
-<td>Cancel every pending Psst task in one pass, reporting per-task success/failure.</td>
+<td>Cancel every pending Psst task in one pass, reporting per-task success or failure.</td>
 </tr>
 </tbody></table>
-<p>Already-fired tasks never appear in the listing — they self-delete on completion (see <a href="docs/BIBLE.md#PST-LAW-6"><code>PST-LAW-6</code></a>).</p>
-<h2 id="repeat-schedule">Repeat &amp; schedule</h2>
-<p>The <code>sms</code> subcommand accepts three optional flags that let you drip a message at a cadence, defer it to a specific time, or both. Flags may appear anywhere in the <code>sms</code> arg list — before the recipient, after the message, mixed with each other.</p>
+<p>Already-fired tasks never appear in the listing; they self-delete on completion (see <a href="docs/BIBLE.md#PST-LAW-6">PST-LAW-6</a>).</p>
+<h2 id="repeat-and-schedule">Repeat and schedule</h2>
+<p>The <code>sms</code> subcommand accepts three optional flags that let you drip a message at a cadence, defer it to a specific time, or both. Flags may appear anywhere in the <code>sms</code> argument list.</p>
 <table><thead><tr>
 <th>Flag</th>
 <th>Alias</th>
@@ -261,25 +278,25 @@ psst pending                               Alias for `psst scheduled`.</code></p
 </tr></thead><tbody>
 <tr>
 <td><code>--repeat</code></td>
-<td>—</td>
+<td>none</td>
 <td>positive integer</td>
-<td>Send the message <em>N</em> times total. Default <code>1</code>.</td>
+<td>Send the message N times total. Default <code>1</code>.</td>
 </tr>
 <tr>
 <td><code>--interval</code></td>
 <td><code>--every</code></td>
 <td>duration</td>
-<td>Delay between repeats. Required whenever <code>--repeat &gt; 1</code>.</td>
+<td>Delay between repeats. Required whenever <code>--repeat</code> is greater than 1.</td>
 </tr>
 <tr>
 <td><code>--schedule</code></td>
 <td><code>--start</code></td>
-<td>time-of-day</td>
-<td>Defer the first send to local wall-clock time <em>T</em> (next occurrence) via Windows Task Scheduler.</td>
+<td>time of day</td>
+<td>Defer the first send to local wall-clock time T (next occurrence) via Windows Task Scheduler.</td>
 </tr>
 </tbody></table>
-<h3 id="duration-format-interval-every">Duration format (<code>--interval</code> / <code>--every</code>)</h3>
-<p>A non-negative integer followed by a unit suffix. Suffix is case-insensitive; a bare integer is treated as seconds.</p>
+<h3 id="duration-format">Duration format</h3>
+<p><code>--interval</code> / <code>--every</code> take a non-negative integer followed by a unit suffix. The suffix is case-insensitive; a bare integer is treated as seconds.</p>
 <table><thead><tr>
 <th>Form</th>
 <th>Meaning</th>
@@ -311,9 +328,9 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <td><code>1800</code></td>
 </tr>
 </tbody></table>
-<p>Decimals (<code>1.5h</code>) are rejected — keep it integer-valued. Negatives are rejected.</p>
-<h3 id="time-format-schedule-start">Time format (<code>--schedule</code> / <code>--start</code>)</h3>
-<p>A wall-clock time in the local timezone. Always resolves to the <strong>next future occurrence</strong> — if the time has already passed today, the schedule rolls forward to tomorrow.</p>
+<p>Decimals (<code>1.5h</code>) and negatives are rejected.</p>
+<h3 id="time-format">Time format</h3>
+<p><code>--schedule</code> / <code>--start</code> take a wall-clock time in the local timezone. It always resolves to the next future occurrence: if the time has already passed today, the schedule rolls forward to tomorrow.</p>
 <table><thead><tr>
 <th>Form</th>
 <th>Meaning</th>
@@ -331,16 +348,16 @@ psst pending                               Alias for `psst scheduled`.</code></p
 </tr>
 <tr>
 <td>Whole-hour shortcut</td>
-<td>hour + am/pm only</td>
+<td>hour plus am/pm only</td>
 <td><code>10am</code>, <code>2pm</code></td>
 </tr>
 </tbody></table>
 <h3 id="examples">Examples</h3>
-<pre><code class="language-powershell"># Single send (no flags — runs in-process and returns immediately).
+<pre><code class="language-powershell"># Single send (no flags: runs in-process and returns immediately).
 psst sms jordan "MFE."
 
 # Twelve sends, five minutes apart. Detaches to Task Scheduler so the
-# shell isn't tied up for the whole hour. See "Implicit --schedule now".
+# shell isn't tied up for the whole hour.
 psst sms jordan "MFE." --repeat 12 --every 5m
 
 # Single send deferred to 10:30am local (today, or tomorrow if past 10:30).
@@ -348,36 +365,30 @@ psst sms jordan "good morning" --schedule 10:30am
 
 # Defer to 9:00am, then ping five times one minute apart.
 psst sms jordan "standup" --start 9:00am --repeat 5 --every 1m</code></pre>
-<h3 id="implicit-schedule-now">Implicit <code>--schedule now</code></h3>
-<p>Whenever you pass <code>--interval</code> (or its alias <code>--every</code>) <strong>without</strong> an explicit <code>--schedule</code> / <code>--start</code>, Psst infers <code>--schedule now</code> for you. "Now" rounds up to the next whole-minute boundary, because <code>schtasks /ST</code> only supports minute precision; a small cushion is added when you're within 5 seconds of the boundary so the registration doesn't race the trigger.</p>
+<h3 id="implicit-schedule-now">Implicit schedule now</h3>
+<p>Whenever you pass <code>--interval</code> (or <code>--every</code>) without an explicit <code>--schedule</code> / <code>--start</code>, Psst infers <code>--schedule now</code>. "Now" rounds up to the next whole-minute boundary, because <code>schtasks /ST</code> only supports minute precision; a small cushion is added when you are within 5 seconds of the boundary so the registration does not race the trigger.</p>
 <p>The practical effect: a long drip loop hands itself off to Windows Task Scheduler instead of blocking your shell. You get your prompt back immediately, and the loop runs in a detached <code>psst.exe</code> child process spawned by Task Scheduler.</p>
 <pre><code class="language-powershell"># These two are equivalent.
 psst sms jordan "ping" --repeat 12 --every 5m
 psst sms jordan "ping" --repeat 12 --every 5m --schedule now   # (illustrative)</code></pre>
-<h2 id="how-schedule-is-implemented">How <code>--schedule</code> is implemented</h2>
+<h2 id="how-scheduling-works">How scheduling works</h2>
 <p>Under the hood, <code>--schedule</code> (and its alias <code>--start</code>):</p>
 <ol>
 <li>Resolves the time to a concrete local <code>DateTime</code> using next-occurrence semantics.</li>
-<li>Writes a small launcher <code>.cmd</code> file to <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.cmd</code> that:    - invokes <code>psst.exe sms …</code> with the original argv minus      <code>--schedule</code> (so the deferred run doesn't recursively re-schedule)      and with <code>--repeat</code>/<code>--interval</code> preserved, and with      <code>PSST_FROM_SCHEDULE=1</code> set so the deferred fire runs the send path      instead of re-registering itself;    - then runs <code>schtasks /Delete /TN &lt;task-name&gt; /F</code> and removes the      JSON sidecar — so successful runs leave nothing pending behind.</li>
-<li>Writes a JSON sidecar <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.json</code> with the recipient, message, repeat, and interval values, used by    <code>psst scheduled</code> to render a meaningful listing.</li>
-<li>Calls `schtasks.exe /Create /SC ONCE /TN MindAttic.Psst.&lt;id&gt; /TR &lt;launcher&gt; /SD &lt;date&gt; /ST &lt;time&gt; /F`.</li>
+<li>Writes a small launcher <code>.cmd</code> file to <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.cmd</code> that invokes <code>psst.exe sms …</code> with the original argv minus <code>--schedule</code> (so the deferred run does not re-schedule itself), keeps <code>--repeat</code>/<code>--interval</code>, and sets <code>PSST_FROM_SCHEDULE=1</code> so the deferred fire runs the send path. It then runs <code>schtasks /Delete /TN &lt;task-name&gt; /F</code> and removes the JSON sidecar, so successful runs leave nothing pending behind.</li>
+<li>Writes a JSON sidecar <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.json</code> with the recipient, message, repeat and interval values, used by <code>psst scheduled</code> to render a meaningful listing.</li>
+<li>Calls <code>schtasks.exe /Create /SC ONCE /TN MindAttic.Psst.&lt;id&gt; /TR &lt;launcher&gt; /SD &lt;date&gt; /ST &lt;time&gt; /F</code>.</li>
 </ol>
-<blockquote><p>Note: <code>schtasks /Z</code> (auto-delete after run) is intentionally not used here — it requires an <code>EndBoundary</code> that Windows doesn't synthesize from a bare <code>/SC ONCE</code>. The launcher self-deletes instead, achieving the same effect with zero edge cases.</p></blockquote>
-<h3 id="inspecting-cancelling-scheduled-sends">Inspecting &amp; cancelling scheduled sends</h3>
-<pre><code class="language-text">psst scheduled            # list all pending Psst tasks (alias: psst pending)
-psst scheduled list       # same as above
-psst scheduled cancel &lt;task-name&gt;
-                          # delete one task + its launcher + sidecar (alias: rm, delete)
-psst scheduled clear      # cancel every pending Psst task in one go</code></pre>
-<p>Listing reads the actual Task Scheduler state (via <code>schtasks /Query /FO CSV /V</code>) and enriches each row with the JSON sidecar, so the table shows recipient, message preview, and repeat/interval at a glance. Already-fired tasks don't appear — they self-deleted on completion.</p>
-<p>Example:</p>
+<p><code>schtasks /Z</code> (auto-delete after run) is intentionally not used: it requires an <code>EndBoundary</code> that Windows does not synthesize from a bare <code>/SC ONCE</code>. The launcher self-deletes instead, with the same effect and no edge cases.</p>
+<h3 id="inspecting-and-cancelling-scheduled-sends">Inspecting and cancelling scheduled sends</h3>
+<p>Listing reads the actual Task Scheduler state (via <code>schtasks /Query /FO CSV /V</code>) and enriches each row with the JSON sidecar, so the table shows recipient, message preview, and repeat/interval at a glance.</p>
 <pre><code class="language-powershell">PS&gt; psst scheduled
 Pending Psst tasks (2):
 
   ⏰ 2026-05-22 12:53   MindAttic.Psst.82894a30e2ad
-     → jordan (12088996244): "deploy finished"
+     → jordan (5555550123): "deploy finished"
   ⏰ 2026-05-23 09:00   MindAttic.Psst.f73f70ff1e97
-     → jordan (12088996244): "standup reminder"
+     → jordan (5555550123): "standup reminder"
      ↻ 5 sends every 1m
 
 Cancel one:  psst scheduled cancel &lt;task-name&gt;
@@ -388,24 +399,40 @@ Cancel all:  psst scheduled clear</code></pre>
 
 schtasks /Query /TN MindAttic.Psst.*    # tab-complete task name first
 schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
-<h2 id="the-notification-pipeline">The notification pipeline</h2>
-<p>Every notification (whether from <code>-- &lt;command&gt;</code>, <code>test</code>, or an <code>sms</code> send) goes through <code>PsstNotifier.NotifyAsync</code>:</p>
+<h2 id="how-it-works">How it works</h2>
+<pre><code class="language-text"> psst -- &lt;command&gt;          psst test / psst sms
+        |                           |
+  run child, time it                |
+        |                           |
+        +------------+--------------+
+                     |
+          PsstNotifier.NotifyAsync
+                     |
+         +-----------+------------+        (Task.WhenAll: concurrent)
+         |                        |
+   PsstSoundPlayer          ISmsClient (resolved transport)
+   MP3 via NAudio           EmailSmsClient (MailKit SMTP)
+   -&gt; WAV fallback                |
+                       one email per US carrier gateway
+                       tmomail.net, txt.att.net, vtext.com, ...</code></pre>
+<h3 id="the-notification-pipeline">The notification pipeline</h3>
+<p>Every notification (from <code>-- &lt;command&gt;</code>, <code>test</code>, or an <code>sms</code> send) goes through <code>PsstNotifier.NotifyAsync</code>:</p>
 <ol>
-<li>Sound playback and SMS dispatch run <strong>concurrently</strong> (<code>Task.WhenAll</code>) — the audio cue never delays the text, and vice versa.</li>
-<li>Sound is skipped when <code>--silent</code> was passed (or, for <code>sms</code>, always — <code>sms</code> never plays the sound).</li>
-<li>SMS is dispatched through exactly one resolved transport (see <a href="docs/BIBLE.md#PST-LAW-4"><code>PST-LAW-4</code></a>) — no silent fallback to a second    transport once the resolved one is configured.</li>
-<li>The caller gets back a <code>NotifyResult</code>: whether sound played, and the list of SMS attempts (transport name + success/detail) so the CLI can print a    <code>✓</code>/<code>✗</code> line per attempt.</li>
+<li>Sound playback and SMS dispatch run concurrently (<code>Task.WhenAll</code>): the audio cue never delays the text, and vice versa.</li>
+<li>Sound is skipped when <code>--silent</code> was passed, and always for <code>sms</code>.</li>
+<li>SMS is dispatched through exactly one resolved transport (see <a href="docs/BIBLE.md#PST-LAW-4">PST-LAW-4</a>), with no silent fallback to a second transport once the resolved one is configured.</li>
+<li>The caller gets back a <code>NotifyResult</code>: whether sound played, and the list of SMS attempts (transport name plus success/detail) so the CLI can print a pass/fail line per attempt.</li>
 </ol>
-<p>Sound failure is always best-effort — it never fails the overall notification (<code>PST-LAW-2</code>).</p>
-<h2 id="sound-playback">Sound playback</h2>
+<p>Sound failure is always best-effort; it never fails the overall notification (<code>PST-LAW-2</code>).</p>
+<h3 id="sound-playback">Sound playback</h3>
 <p>The embedded clip (<code>icq-uh-oh.mp3</code> / <code>icq-uh-oh.wav</code>, shipped inside the <code>MindAttic.Psst</code> assembly as embedded resources) plays via two transports, tried in order:</p>
 <ol>
-<li><strong>MP3 via NAudio</strong> (<code>Mp3FileReader</code> + <code>WaveOutEvent</code>, WASAPI output).</li>
-<li><strong>WAV via <code>System.Media.SoundPlayer</code></strong> — pure managed fallback, no codec dependency, used when the NAudio path fails (e.g. a missing ACM codec).</li>
+<li>MP3 via NAudio (<code>Mp3FileReader</code> plus <code>WaveOutEvent</code>).</li>
+<li>WAV via <code>System.Media.SoundPlayer</code>: a pure managed fallback with no codec dependency, used when the NAudio path fails (for example a missing ACM codec).</li>
 </ol>
-<p>On a non-Windows host, <code>PsstSoundPlayer.PlayAsync</code> returns a failure (<code>"not windows"</code>) rather than throwing — sound degrades silently everywhere except Windows, matching the fact that this project targets <code>net10.0-windows</code> only.</p>
-<h2 id="sms-transport-email-to-sms-carrier-fanout">SMS transport: email-to-SMS carrier fanout</h2>
-<p>Psst has exactly <strong>one</strong> SMS transport (<code>PsstVia.Email</code> — Twilio support was removed in <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19"><code>PST-A3</code></a>). It works by emailing the recipient's number, formatted as an address, at <em>every</em> known US carrier's email-to-SMS gateway domain:</p>
+<p>On a non-Windows host, <code>PsstSoundPlayer.PlayAsync</code> returns a failure (<code>"not windows"</code>) rather than throwing, matching the fact that this project targets <code>net10.0-windows</code> only.</p>
+<h3 id="sms-transport-and-carrier-fanout">SMS transport and carrier fanout</h3>
+<p>Psst has exactly one SMS transport (<code>PsstVia.Email</code>; Twilio support was removed in <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19">PST-A3</a>). It works by emailing the recipient's number, formatted as an address, at every known US carrier's email-to-SMS gateway domain:</p>
 <table><thead><tr>
 <th>Carrier (and MVNOs)</th>
 <th>Gateway domain</th>
@@ -443,10 +470,10 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
 <td><code>msg.fi.google.com</code></td>
 </tr>
 </tbody></table>
-<p>For a 10-digit number <code>5551234567</code>, the fanout is <code>5551234567@tmomail.net, 5551234567@txt.att.net, …</code> — one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know (or ask) which carrier the number belongs to (<a href="docs/BIBLE.md#PST-LAW-3"><code>PST-LAW-3</code></a>). You can also pin one explicit address via <code>toEmail</code> (see below) — it's unioned with the auto-fanout list, deduplicated.</p>
-<p>Delivery itself is a real SMTP send via MailKit, using the SMTP account you configure below.</p>
+<p>For a 10-digit number <code>5551234567</code>, the fanout is <code>5551234567@tmomail.net, 5551234567@txt.att.net, …</code>, one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know which carrier the number belongs to (<a href="docs/BIBLE.md#PST-LAW-3">PST-LAW-3</a>). You can also pin one explicit address via <code>toEmail</code>; it is unioned with the auto-fanout list and deduplicated.</p>
+<p>Delivery itself is a real SMTP send via MailKit, using the SMTP account you configure.</p>
 <h2 id="setting-up-sms-credentials">Setting up SMS credentials</h2>
-<p>Psst reads from several sources, lowest → highest precedence:</p>
+<p>Psst reads from several sources, lowest to highest precedence:</p>
 <table><thead><tr>
 <th>Source</th>
 <th>Path</th>
@@ -459,44 +486,27 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
 </tr>
 <tr>
 <td><code>appsettings.json</code></td>
-<td><code>.\appsettings.json</code> (CWD)</td>
+<td><code>.\appsettings.json</code> (current directory)</td>
 <td>optional, legacy</td>
 </tr>
 <tr>
-<td><strong>settings.json</strong></td>
+<td>settings.json</td>
 <td><code>%APPDATA%\MindAttic\Psst\settings.json</code></td>
-<td><strong>primary</strong>, outside the repo</td>
+<td>primary, outside the repo</td>
 </tr>
 <tr>
 <td>Environment variables</td>
 <td><code>MindAttic__Vault__Notifications__*</code></td>
-<td>CI / containers override</td>
+<td>CI and container overrides</td>
 </tr>
 </tbody></table>
-<p>All four sources ultimately populate one logical config section, <code>MindAttic:Vault:Notifications</code> (see <a href="#configuration-reference">Configuration reference</a>).</p>
-<h3 id="option-a-settingsjson-recommended">Option A — <code>settings.json</code> (recommended)</h3>
-<p>Create <code>%APPDATA%\MindAttic\Psst\settings.json</code>:</p>
-<pre><code class="language-json">{
-  "MindAttic": {
-    "Vault": {
-      "Notifications": {
-        "email": {
-          "smtpHost": "smtp.gmail.com",
-          "smtpPort": 587,
-          "username": "you@gmail.com",
-          "password": "app-password",
-          "from":     "you@gmail.com"
-        },
-        "to": "+15555550101"
-      }
-    }
-  }
-}</code></pre>
-<p>For Gmail you must use an <strong>app password</strong> (Google Account → Security → 2-Step Verification → App passwords), not your account password.</p>
+<p>All four sources populate one logical config section, <code>MindAttic:Vault:Notifications</code> (see <a href="#configuration">Configuration</a>).</p>
+<h3 id="option-a-settings-file">Option A settings file</h3>
+<p>Create <code>%APPDATA%\MindAttic\Psst\settings.json</code> as shown in <a href="#quick-start">Quick start</a>. For Gmail you must use an app password (Google Account, Security, 2-Step Verification, App passwords), not your account password.</p>
 <p>You can also pin a specific carrier gateway with <code>toEmail</code>:</p>
 <pre><code class="language-json">"toEmail": "5555550101@vtext.com"</code></pre>
 <p>If both <code>to</code> and <code>toEmail</code> are set, the fanout and the explicit address are combined (deduplicated).</p>
-<h3 id="option-b-vault-file-providersjson">Option B — Vault file (<code>providers.json</code>)</h3>
+<h3 id="option-b-vault-file">Option B Vault file</h3>
 <p>Create <code>%APPDATA%\MindAttic\Notifications\providers.json</code>:</p>
 <pre><code class="language-json">{
   "email": {
@@ -508,7 +518,7 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
   },
   "to": "+15555550101"
 }</code></pre>
-<h3 id="option-c-environment-variables">Option C — Environment variables</h3>
+<h3 id="option-c-environment-variables">Option C environment variables</h3>
 <pre><code class="language-powershell">$env:MindAttic__Vault__Notifications__email__smtpHost = "smtp.gmail.com"
 $env:MindAttic__Vault__Notifications__email__smtpPort = "587"
 $env:MindAttic__Vault__Notifications__email__username = "you@gmail.com"
@@ -517,13 +527,13 @@ $env:MindAttic__Vault__Notifications__email__from     = "you@gmail.com"
 $env:MindAttic__Vault__Notifications__to              = "+15555550101"</code></pre>
 <h3 id="verify-it-works">Verify it works</h3>
 <pre><code class="language-powershell">psst ping     # lists each source path and whether it was found
-psst test     # sends a real SMS — check your phone</code></pre>
-<h2 id="configuration-reference">Configuration reference</h2>
-<p>All email/recipient settings live under one <code>IConfiguration</code> section, <code>MindAttic:Vault:Notifications</code> (<code>PsstConfiguration.Section</code>):</p>
+psst test     # sends a real SMS, check your phone</code></pre>
+<h2 id="configuration">Configuration</h2>
+<p>All email and recipient settings live under one <code>IConfiguration</code> section, <code>MindAttic:Vault:Notifications</code> (<code>PsstConfiguration.Section</code>):</p>
 <table><thead><tr>
 <th>Key</th>
 <th>Type</th>
-<th>Required?</th>
+<th>Required</th>
 <th>Meaning</th>
 </tr></thead><tbody>
 <tr>
@@ -536,7 +546,7 @@ psst test     # sends a real SMS — check your phone</code></pre>
 <td><code>email:smtpPort</code></td>
 <td>int</td>
 <td>no (default <code>587</code>)</td>
-<td>Falls back to <code>587</code> for any unparseable/out-of-range (<code>≤0</code> or <code>&gt;65535</code>) value, so a typo can't surface as a confusing <code>ConnectAsync</code> error.</td>
+<td>Falls back to <code>587</code> for any unparseable or out-of-range (0 or below, above 65535) value, so a typo cannot surface as a confusing <code>ConnectAsync</code> error.</td>
 </tr>
 <tr>
 <td><code>email:username</code></td>
@@ -548,7 +558,7 @@ psst test     # sends a real SMS — check your phone</code></pre>
 <td><code>email:password</code></td>
 <td>string</td>
 <td>yes</td>
-<td>SMTP auth password (a Gmail <strong>app password</strong> for Gmail accounts).</td>
+<td>SMTP auth password (a Gmail app password for Gmail accounts).</td>
 </tr>
 <tr>
 <td><code>email:from</code></td>
@@ -560,7 +570,7 @@ psst test     # sends a real SMS — check your phone</code></pre>
 <td><code>to</code></td>
 <td>string</td>
 <td>one of <code>to</code>/<code>toEmail</code></td>
-<td>Recipient's US phone number (any punctuated form); auto-fanned-out across every carrier gateway.</td>
+<td>Recipient's US phone number (any punctuated form), auto-fanned-out across every carrier gateway.</td>
 </tr>
 <tr>
 <td><code>toEmail</code></td>
@@ -569,30 +579,29 @@ psst test     # sends a real SMS — check your phone</code></pre>
 <td>An explicit, pre-resolved carrier email-to-SMS address, unioned with the <code>to</code> fanout.</td>
 </tr>
 </tbody></table>
-<p><code>PsstConfiguration.Load</code> returns <code>Email: null</code> if any of <code>smtpHost</code> / <code>username</code> / <code>password</code> / <code>from</code> is missing (all four missing → silently unconfigured; 1–3 missing → an entry appended to <code>Errors</code>, surfaced by <code>psst ping</code>). It also flags "email is configured but neither <code>toEmail</code> nor <code>to</code> is set" when you've wired SMTP creds but forgot a recipient.</p>
-<h2 id="transport-selection-psstvia">Transport selection (<code>PSST_VIA</code>)</h2>
-<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>) — the abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general-shaped so a future transport slots in without a rewrite (see <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19"><code>PST-A3</code></a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
+<p><code>PsstConfiguration.Load</code> returns <code>Email: null</code> if any of <code>smtpHost</code>, <code>username</code>, <code>password</code> or <code>from</code> is missing (all four missing means silently unconfigured; one to three missing appends an entry to <code>Errors</code>, surfaced by <code>psst ping</code>). It also flags "email is configured but neither <code>toEmail</code> nor <code>to</code> is set" when you have wired SMTP credentials but forgot a recipient.</p>
+<h3 id="transport-selection">Transport selection</h3>
+<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>). The abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general so a future transport slots in without a rewrite (see <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19">PST-A3</a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
 <ol>
-<li><code>PSST_VIA</code> environment variable (only <code>email</code>, case-insensitive, is recognized; anything else falls through).</li>
-<li>The target contact's <code>defaultVia</code> (set via <code>contacts.json</code>).</li>
-<li>Project default — <code>email</code>.</li>
+<li>The <code>PSST_VIA</code> environment variable (only <code>email</code>, case-insensitive, is recognised; anything else falls through).</li>
+<li>The target contact's <code>defaultVia</code> (set in <code>contacts.json</code>).</li>
+<li>The project default, <code>email</code>.</li>
 </ol>
-<h2 id="contact-book">Contact book</h2>
-<p>See <a href="#psst-contacts"><code>psst contacts</code></a> above for the CLI surface. Storage details:</p>
+<h3 id="contact-book-storage">Contact book storage</h3>
 <ul>
-<li>File: <code>%APPDATA%\MindAttic\Psst\contacts.json</code> (next to <code>settings.json</code>, intentionally outside the settings/User-Secrets chain so it's plain,   user-editable JSON).</li>
-<li>Lookup (<code>ContactBook.Find</code>) tries a case-insensitive name match first, then falls back to matching normalized phone digits.</li>
-<li>Writes (<code>ContactStore.Save</code>) go through a temp-file-then-<code>File.Replace</code> swap, so a crash mid-write can't truncate the file.</li>
+<li>File: <code>%APPDATA%\MindAttic\Psst\contacts.json</code>, next to <code>settings.json</code> but intentionally outside the settings chain so it stays plain, user-editable JSON.</li>
+<li>Lookup (<code>ContactBook.Find</code>) tries a case-insensitive name match first, then falls back to matching normalised phone digits.</li>
+<li>Writes (<code>ContactStore.Save</code>) go through a temp-file-then-<code>File.Replace</code> swap, so a crash mid-write cannot truncate the file.</li>
 </ul>
-<h2 id="build-test-publish">Build, test, publish</h2>
+<h2 id="building-and-testing">Building and testing</h2>
 <pre><code class="language-powershell"># Restore + build (Release, matches CI)
 dotnet restore MindAttic.Psst.slnx
 dotnet build MindAttic.Psst.slnx --configuration Release --no-restore
 
 # Run the xUnit test suite
 dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Release --no-build</code></pre>
-<p>GitHub Actions (<code>.github/workflows/ci.yml</code>) runs exactly this restore → build → test sequence on <code>windows-latest</code> with <code>.NET 10.0.x</code>, for every push and pull request against <code>main</code>, and uploads the <code>.trx</code> test results as a build artifact.</p>
-<p>Both shipped projects target <code>net10.0-windows</code>:</p>
+<p>GitHub Actions (<a href=".github/workflows/ci.yml">.github/workflows/ci.yml</a>) runs exactly this restore, build, test sequence on <code>windows-latest</code> with .NET 10.0.x for every push and pull request against <code>main</code>, and uploads the <code>.trx</code> test results as a build artifact.</p>
+<p>All projects target <code>net10.0-windows</code>:</p>
 <table><thead><tr>
 <th>Project</th>
 <th>Output</th>
@@ -600,25 +609,25 @@ dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Rel
 </tr></thead><tbody>
 <tr>
 <td><code>MindAttic.Psst</code></td>
-<td><code>MindAttic.Psst</code> (library / NuGet package, <code>&lt;Version&gt;1.0.0&lt;/Version&gt;</code>)</td>
-<td>Notifier, transports, sound, configuration, contacts, duration/time parsing.</td>
+<td><code>MindAttic.Psst</code> library / NuGet package, version 1.0.0</td>
+<td>Notifier, transports, sound, configuration, contacts, duration and time parsing. Depends on NAudio, MailKit and MindAttic.Vault.</td>
 </tr>
 <tr>
 <td><code>MindAttic.Psst.Cli</code></td>
 <td><code>psst.exe</code> (<code>AssemblyName=psst</code>)</td>
-<td>argv parsing, subcommand dispatch, Windows Task Scheduler integration.</td>
+<td>Argument parsing, subcommand dispatch, Windows Task Scheduler integration.</td>
 </tr>
 <tr>
 <td><code>MindAttic.Psst.Tests</code></td>
 <td>test assembly</td>
-<td>xUnit test suite (100 tests as of the last verified BIBLE snapshot — see <a href="docs/BIBLE.md#PST-§6">BIBLE §6</a>).</td>
+<td>xUnit test suite; see <a href="docs/BIBLE.md#PST-§6">BIBLE section 6</a> for the last verified count.</td>
 </tr>
 </tbody></table>
-<p>Versioning is <strong>whole-number only</strong> — <code>&lt;Version&gt;N.0.0&lt;/Version&gt;</code>, bumped by major version alone, per <code>HOUSE-LAW-1</code>. There is currently no separate publish/pack script in this repo beyond the standard <code>dotnet build</code>/<code>dotnet pack</code> flow.</p>
+<p>Versioning is whole-number only (<code>&lt;Version&gt;N.0.0&lt;/Version&gt;</code>, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard <code>dotnet build</code> / <code>dotnet pack</code> flow.</p>
 <p>After editing anything under <code>docs/</code>, regenerate and lint the Codex canon:</p>
 <pre><code class="language-powershell">powershell -File tools/codex.ps1 digest   # regenerate docs/BIBLE.digest.md
 powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited tests/paths, digest freshness</code></pre>
-<h2 id="directory-layout">Directory layout</h2>
+<h2 id="project-layout">Project layout</h2>
 <pre><code class="language-text">MindAttic.Psst/
 ├── MindAttic.Psst/                  # library (net10.0-windows)
 │   ├── Configuration/                 PsstConfiguration, EmailSettings, PsstConfigurationSources
@@ -626,49 +635,59 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 │   ├── Sms/                           ISmsClient, EmailSmsClient (MailKit), CarrierGateways
 │   ├── Sound/                         PsstSoundPlayer + embedded icq-uh-oh.mp3 / .wav
 │   ├── Time/                          DurationParser, TimeOfDayParser
-│   ├── PsstNotifier.cs                 orchestrates sound + SMS
-│   └── PsstVia.cs                      transport enum + PsstViaResolver
-├── MindAttic.Psst.Cli/               # psst.exe front door (net10.0-windows)
-│   ├── PsstCli.cs                      argv parsing, subcommand handlers
-│   ├── Program.cs                      entry point
-│   └── Scheduling/                     ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
-├── MindAttic.Psst.Tests/             # xUnit test project
+│   ├── PsstNotifier.cs                orchestrates sound + SMS
+│   └── PsstVia.cs                     transport enum + PsstViaResolver
+├── MindAttic.Psst.Cli/              # psst.exe front door (net10.0-windows)
+│   ├── PsstCli.cs                     argv parsing, subcommand handlers
+│   ├── Program.cs                     entry point
+│   └── Scheduling/                    ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
+├── MindAttic.Psst.Tests/            # xUnit test project
 ├── docs/
-│   ├── BIBLE.md                        L0 — architecture, Laws, verified state
-│   ├── AMENDMENTS.md                   L1 — append-only change log
-│   ├── USER_STORIES.md                 L2 — test-cited stories + backlog
-│   ├── BIBLE.digest.md                 GENERATED — never hand-edit
-│   └── rfc/                            design notes (open: RFC 0001)
+│   ├── BIBLE.md                       L0: architecture, Laws, verified state
+│   ├── AMENDMENTS.md                  L1: append-only change log
+│   ├── USER_STORIES.md                L2: test-cited stories + backlog
+│   ├── BIBLE.digest.md                GENERATED, never hand-edit
+│   └── rfc/                           design notes
 ├── tools/
-│   ├── codex.ps1                       docs doctor/digest CLI
-│   └── build-readme.ps1                thin wrapper → shared codex-standard engine
-├── .github/workflows/ci.yml           restore → build → test on windows-latest
-├── index.htm, privacy.htm, terms.htm  static SMS-program pages (see below)
+│   ├── codex.ps1                      docs doctor/digest CLI
+│   └── build-readme.ps1               thin wrapper to the shared codex-standard engine
+├── .github/workflows/ci.yml           restore, build, test on windows-latest
+├── index.htm, privacy.htm, terms.htm  static SMS-program pages
 ├── README.md                          this file
 └── MindAttic.Psst.slnx</code></pre>
 <h2 id="compliance-pages">Compliance pages</h2>
-<p>Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-registration processes expect, at the repo root (not generated from Markdown — do not overwrite them when regenerating <code>README.htm</code>):</p>
+<p>Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-registration processes expect, at the repo root. They are not generated from Markdown; do not overwrite them when regenerating <code>README.htm</code>.</p>
 <ul>
-<li><strong><a href="index.htm">index.htm</a></strong> — landing page for the tool.</li>
-<li><strong><a href="privacy.htm">privacy.htm</a></strong> — Privacy Policy. Summarizes that Psst is a <strong>single-user</strong> tool: the account owner is the sole configurator and sole   recipient of any SMS it sends; the one phone number it stores lives only in   the local <code>%APPDATA%\MindAttic\Psst\settings.json</code> file   (<code>MindAttic:Vault:Notifications:to</code>), is used solely to deliver the owner's   own CLI-completion notifications, and is never sold or shared with third   parties.</li>
-<li><strong><a href="terms.htm">terms.htm</a></strong> — SMS Terms &amp; Conditions. Covers opt-in (editing the same local settings file), the self-issued confirmation message,   typical message frequency (0–20/day, driven by the owner's own CLI   activity), standard <code>STOP</code>/<code>HELP</code> keyword handling, and that message/data   rates may apply per the owner's own carrier plan.</li>
+<li><a href="index.htm">index.htm</a>: a static page describing the tool.</li>
+<li><a href="privacy.htm">privacy.htm</a>: Privacy Policy. Psst is a single-user tool: the account owner is the sole configurator and sole recipient of any SMS it sends; the one phone number it stores lives only in the local <code>%APPDATA%\MindAttic\Psst\settings.json</code> file (<code>MindAttic:Vault:Notifications:to</code>), is used solely to deliver the owner's own CLI-completion notifications, and is never sold or shared with third parties.</li>
+<li><a href="terms.htm">terms.htm</a>: SMS Terms and Conditions. Covers opt-in (editing the same local settings file), the self-issued confirmation message, typical message frequency (0 to 20 a day, driven by the owner's own CLI activity), standard <code>STOP</code>/<code>HELP</code> keyword handling, and that message and data rates may apply per the owner's own carrier plan.</li>
 </ul>
 <h2 id="glossary">Glossary</h2>
 <ul>
-<li><strong>Wrap</strong> — <code>psst -- &lt;command&gt;</code>: run a command to completion and notify on exit.</li>
-<li><strong>Transport (via)</strong> — the channel a send uses. Currently only <code>email</code> (carrier email-to-SMS); the <code>PsstVia</code> enum and <code>PsstViaResolver</code> are shaped   for future alternative transports.</li>
-<li><strong>Fanout</strong> — sending one email-to-SMS message to every known US carrier gateway for a number, since the carrier is unknown.</li>
-<li><strong>Carrier gateway</strong> — a per-carrier email domain (e.g. <code>vtext.com</code>) that delivers email as SMS.</li>
-<li><strong>Sidecar</strong> — the JSON metadata file written next to a scheduled launcher <code>.cmd</code> so <code>psst scheduled</code> can render a meaningful listing.</li>
-<li><strong>Launcher</strong> — the self-deleting <code>.cmd</code> Task Scheduler runs to perform a deferred send.</li>
-<li><strong>Vault chain</strong> — the <code>MindAttic.Vault</code> <code>IConfiguration</code> source order (vault files → appsettings → <code>%APPDATA%</code> settings.json → env vars) credentials   resolve through.</li>
-<li><strong><code>PSST_FROM_SCHEDULE</code></strong> — env marker set by the launcher so a deferred send doesn't recursively re-schedule itself.</li>
-<li><strong><code>PSST_VIA</code></strong> — env var that overrides transport selection for one send (see <a href="#transport-selection-psst_via">Transport selection</a>).</li>
+<li>Wrap: <code>psst -- &lt;command&gt;</code>, run a command to completion and notify on exit.</li>
+<li>Transport (via): the channel a send uses. Currently only <code>email</code> (carrier email-to-SMS); <code>PsstVia</code> and <code>PsstViaResolver</code> are shaped for future alternatives.</li>
+<li>Fanout: sending one email-to-SMS message to every known US carrier gateway for a number, since the carrier is unknown.</li>
+<li>Carrier gateway: a per-carrier email domain (for example <code>vtext.com</code>) that delivers email as SMS.</li>
+<li>Sidecar: the JSON metadata file written next to a scheduled launcher <code>.cmd</code> so <code>psst scheduled</code> can render a meaningful listing.</li>
+<li>Launcher: the self-deleting <code>.cmd</code> Task Scheduler runs to perform a deferred send.</li>
+<li>Vault chain: the MindAttic.Vault <code>IConfiguration</code> source order (vault files, appsettings, <code>%APPDATA%</code> settings.json, environment variables) that credentials resolve through.</li>
+<li><code>PSST_FROM_SCHEDULE</code>: environment marker set by the launcher so a deferred send does not re-schedule itself.</li>
+<li><code>PSST_VIA</code>: environment variable that overrides transport selection for one send.</li>
 </ul>
+<h2 id="documentation">Documentation</h2>
+<ul>
+<li><a href="docs/BIBLE.md">docs/BIBLE.md</a>: architecture, rationale, the project's Laws and verified build/test evidence.</li>
+<li><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a>: append-only change history.</li>
+<li><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a>: story-by-story backlog, and which behaviours are test-verified versus manual-only.</li>
+<li><a href="docs/BIBLE.digest.md">docs/BIBLE.digest.md</a>: generated digest of the bible.</li>
+<li><a href="AGENTS.md">AGENTS.md</a>: instructions for coding agents working in this repo. Agents: read the <a href="#opt-in-only">Opt-in only</a> rule above before touching any command line.</li>
+</ul>
+<h2 id="license">License</h2>
+<p>This repository has no license file; all rights reserved.</p>
 <hr>
-<p>For architecture, the project's Laws, and verified build/test evidence, see <strong><a href="docs/BIBLE.md">docs/BIBLE.md</a></strong>. For the change history, see <strong><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a></strong>. For the story-by-story backlog and which behaviors are test-verified vs. manual-only, see <strong><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a></strong>.</p>
+<p>Part of <a href="https://mindattic.com">MindAttic</a> — see more projects at <a href="https://github.com/mindattic">github.com/mindattic</a>. Related: <a href="https://github.com/mindattic/MindAttic.Vault">MindAttic.Vault</a> (credential and settings chain Psst reads from).</p>
 
-    <p class="codex-footer">Generated 2026-08-14 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
+    <p class="codex-footer">Generated 2026-10-03 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
   </main>
 </div>
 <script>(function(){
