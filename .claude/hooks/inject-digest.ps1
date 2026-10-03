@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Claude Code SessionStart hook for MindAttic.Psst — injects docs/BIBLE.digest.md as
+    Claude Code SessionStart hook for MindAttic.Psst - injects docs/BIBLE.digest.md as
     authoritative context.
 
 .DESCRIPTION
@@ -25,7 +25,7 @@ try {
     if ([string]::IsNullOrWhiteSpace($digest)) { Write-Output '{}'; exit 0 }
 
     $preamble = @"
-[MindAttic Codex — AUTHORITATIVE PROJECT CONTEXT]
+[MindAttic Codex - AUTHORITATIVE PROJECT CONTEXT]
 The following digest is the source of truth for MindAttic.Psst (code: PST). It is generated from
 docs/BIBLE.md. Treat its laws (PST-LAW-n) and the inherited MindAttic House Rules (HOUSE-LAW-n) as
 binding. Full detail lives in docs/BIBLE.md and docs/USER_STORIES.md.
@@ -63,7 +63,7 @@ binding. Full detail lives in docs/BIBLE.md and docs/USER_STORIES.md.
     exit 0
 }
 catch {
-    # Never break a session over context injection — degrade to a no-op.
+    # Never break a session over context injection - degrade to a no-op.
     Write-Output '{}'
     exit 0
 }

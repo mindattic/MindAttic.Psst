@@ -3,6 +3,8 @@ namespace MindAttic.Psst.Tests.Cli;
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Threading;
 using MindAttic.Psst.Cli;
 using Xunit;
@@ -102,5 +104,31 @@ public class PsstCliTests
             Environment.SetEnvironmentVariable("PATHEXT", priorExt);
             try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
         }
+    }
+
+    // ---- usage text: credential sources must be the real lookup chain ----
+
+    [Fact]
+    public async Task Usage_ListsTheRealCredentialChain_NotUserSecrets()
+    {
+        var prior = Console.Out;
+        var sw = new StringWriter();
+        try
+        {
+            Console.SetOut(sw);
+            Assert.Equal(0, await new PsstCli().RunAsync(new[] { "--help" }));
+        }
+        finally
+        {
+            Console.SetOut(prior);
+        }
+
+        var text = sw.ToString();
+        Assert.DoesNotContain("User Secrets", text, StringComparison.OrdinalIgnoreCase);
+        var order = new[] { "vault files", "appsettings.json", @"Psst\settings.json", "env vars" }
+            .Select(s => text.IndexOf(s, StringComparison.Ordinal)).ToArray();
+        Assert.All(order, i => Assert.True(i >= 0));
+        Assert.Equal(order.OrderBy(i => i), order); // lowest -> highest precedence, as BuildConfiguration adds them
+        Assert.Contains("MindAttic:Vault:Notifications", text);
     }
 }

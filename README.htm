@@ -182,7 +182,7 @@ psst contacts [list|add|rm]                Manage the contact book.
 psst sms [flags] &lt;to&gt; &lt;message...&gt;         Send a one-off SMS (see "Repeat and schedule").
 psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends.
 psst pending                               Alias for `psst scheduled`.</code></pre>
-<p>Running <code>psst</code> with no arguments, or <code>psst -h</code> / <code>--help</code> / <code>help</code> / <code>/?</code>, prints the built-in usage summary (<code>PsstCli.PrintUsage</code>).</p>
+<p>Running <code>psst</code> with no arguments, or <code>psst -h</code> / <code>--help</code> / <code>help</code> / <code>/?</code>, prints the built-in usage summary (<code>PsstCli.PrintUsage</code>), ending with the credential chain in precedence order (vault files, <code>./appsettings.json</code>, <code>%APPDATA%\MindAttic\Psst\settings.json</code>, environment variables).</p>
 <h3 id="global-flags">Global flags</h3>
 <table><thead><tr>
 <th>Flag</th>
@@ -652,13 +652,12 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 │   ├── codex.ps1                      docs doctor/digest CLI
 │   └── build-readme.ps1               thin wrapper to the shared codex-standard engine
 ├── .github/workflows/ci.yml           restore, build, test on windows-latest
-├── index.htm, privacy.htm, terms.htm  static SMS-program pages
+├── privacy.htm, terms.htm            static SMS-program pages
 ├── README.md                          this file
 └── MindAttic.Psst.slnx</code></pre>
 <h2 id="compliance-pages">Compliance pages</h2>
 <p>Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-registration processes expect, at the repo root. They are not generated from Markdown; do not overwrite them when regenerating <code>README.htm</code>.</p>
 <ul>
-<li><a href="index.htm">index.htm</a>: a static page describing the tool.</li>
 <li><a href="privacy.htm">privacy.htm</a>: Privacy Policy. Psst is a single-user tool: the account owner is the sole configurator and sole recipient of any SMS it sends; the one phone number it stores lives only in the local <code>%APPDATA%\MindAttic\Psst\settings.json</code> file (<code>MindAttic:Vault:Notifications:to</code>), is used solely to deliver the owner's own CLI-completion notifications, and is never sold or shared with third parties.</li>
 <li><a href="terms.htm">terms.htm</a>: SMS Terms and Conditions. Covers opt-in (editing the same local settings file), the self-issued confirmation message, typical message frequency (0 to 20 a day, driven by the owner's own CLI activity), standard <code>STOP</code>/<code>HELP</code> keyword handling, and that message and data rates may apply per the owner's own carrier plan.</li>
 </ul>

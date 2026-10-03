@@ -97,7 +97,7 @@ psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled se
 psst pending                               Alias for `psst scheduled`.
 ```
 
-Running `psst` with no arguments, or `psst -h` / `--help` / `help` / `/?`, prints the built-in usage summary (`PsstCli.PrintUsage`).
+Running `psst` with no arguments, or `psst -h` / `--help` / `help` / `/?`, prints the built-in usage summary (`PsstCli.PrintUsage`), ending with the credential chain in precedence order (vault files, `./appsettings.json`, `%APPDATA%\MindAttic\Psst\settings.json`, environment variables).
 
 ### Global flags
 
@@ -486,7 +486,7 @@ MindAttic.Psst/
 │   ├── codex.ps1                      docs doctor/digest CLI
 │   └── build-readme.ps1               thin wrapper to the shared codex-standard engine
 ├── .github/workflows/ci.yml           restore, build, test on windows-latest
-├── index.htm, privacy.htm, terms.htm  static SMS-program pages
+├── privacy.htm, terms.htm            static SMS-program pages
 ├── README.md                          this file
 └── MindAttic.Psst.slnx
 ```
@@ -495,7 +495,6 @@ MindAttic.Psst/
 
 Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-registration processes expect, at the repo root. They are not generated from Markdown; do not overwrite them when regenerating `README.htm`.
 
-- [index.htm](index.htm): a static page describing the tool.
 - [privacy.htm](privacy.htm): Privacy Policy. Psst is a single-user tool: the account owner is the sole configurator and sole recipient of any SMS it sends; the one phone number it stores lives only in the local `%APPDATA%\MindAttic\Psst\settings.json` file (`MindAttic:Vault:Notifications:to`), is used solely to deliver the owner's own CLI-completion notifications, and is never sold or shared with third parties.
 - [terms.htm](terms.htm): SMS Terms and Conditions. Covers opt-in (editing the same local settings file), the self-issued confirmation message, typical message frequency (0 to 20 a day, driven by the owner's own CLI activity), standard `STOP`/`HELP` keyword handling, and that message and data rates may apply per the owner's own carrier plan.
 

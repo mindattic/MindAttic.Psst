@@ -932,9 +932,20 @@ public sealed class PsstCli
         Console.WriteLine("  psst sms jordan \"standup\" --start 9:00am --repeat 5 --every 1m");
         Console.WriteLine("  psst contacts add jordan +15551234567");
         Console.WriteLine();
-        Console.WriteLine("Credentials come from the shared MindAttic.Vault chain (User Secrets / env vars).");
-        Console.WriteLine("Section: MindAttic:Vault:Notifications.");
+        Console.WriteLine(CredentialChainHelp);
     }
+
+    /// <summary>
+    /// Usage text describing where credentials come from. Must match the source
+    /// order in <see cref="BuildConfiguration"/> (lowest precedence first).
+    /// </summary>
+    internal const string CredentialChainHelp =
+        """
+        Credentials come from the MindAttic.Vault chain (lowest -> highest precedence):
+          vault files (%APPDATA%\MindAttic\<bucket>\providers.json), ./appsettings.json,
+          %APPDATA%\MindAttic\Psst\settings.json, env vars (MindAttic__Vault__Notifications__*).
+        Section: MindAttic:Vault:Notifications. `psst ping` shows which sources exist.
+        """;
 
     /// <summary>
     /// Resolve a wrapped command name to a launchable full path using the same

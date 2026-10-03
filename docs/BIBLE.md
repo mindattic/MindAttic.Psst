@@ -80,7 +80,7 @@ the instant it lands.
 - **`MindAttic.Psst.Cli`** — the `psst.exe` console front door (`AssemblyName=psst`,
   `OutputType=Exe`). Owns argv parsing, subcommand dispatch, and Windows Task Scheduler
   integration. File: `MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj`.
-- **`MindAttic.Psst.Tests`** — xUnit test project (100 tests). File:
+- **`MindAttic.Psst.Tests`** — xUnit test project (103 tests). File:
   `MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj`.
 
 ### 4.2 Domain model — NOUNS {#PST-§4.2}
@@ -178,7 +178,7 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 Evidence captured 2026-10-03 on this working tree.
 
 - ✅ **Build**: `dotnet build MindAttic.Psst.slnx -c Release` — clean (all three projects compile).
-- ✅ **Tests**: `dotnet test MindAttic.Psst.slnx -c Release` — **100 passed, 0 failed, 0 skipped**
+- ✅ **Tests**: `dotnet test MindAttic.Psst.slnx -c Release` — **103 passed, 0 failed, 0 skipped**
   (Duration ~0.1s).
 - ✅ **Notification pipeline** (`PsstNotifier`) — verified by `PsstNotifierTests` (10 tests:
   silent suppression, concurrent sound+SMS, transport selection, cancellation propagation).
@@ -188,7 +188,10 @@ Evidence captured 2026-10-03 on this working tree.
   (unit forms, next-occurrence semantics, round-trips, malformed rejection).
 - ✅ **Scheduler argv quoting** (`ScheduledTaskRegistrar`) — verified by
   `ScheduledTaskRegistrarTests` (percent-doubling, cmd metacharacter quoting).
-- ✅ **CLI helpers** (`FormatElapsed`, `ResolveExecutable`) — verified by `PsstCliTests`.
+- ✅ **CLI helpers** (`FormatElapsed`, `ResolveExecutable`, usage text naming the real credential
+  chain) — verified by `PsstCliTests`.
+- ✅ **Claude Code hooks are code-page safe** (BOM-less `.claude/*.ps1` are ASCII, so Windows
+  PowerShell 5.1 output has no mojibake) — verified by `RepoScriptsTests`.
 - 🟡 **End-to-end live SMS delivery** (real carrier gateway) — not covered by an automated test
   (requires live credentials + a real phone). Exercised manually via `psst test`.
 - 🟡 **Live `schtasks` registration / sound playback on hardware** — unit-tested at the
