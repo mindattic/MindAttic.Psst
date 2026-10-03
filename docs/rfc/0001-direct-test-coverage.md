@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: rfc
 status: planned
-updated: 2026-06-07
+updated: 2026-10-03
 ---
 
 # RFC 0001 — Direct-test coverage for the pure helpers
@@ -14,7 +14,7 @@ updated: 2026-06-07
 Several pure, deterministic units (`CarrierGateways`, `PsstViaResolver`, `ContactBook`/
 `ContactStore`, `DescribeExitCode`) currently have **no dedicated test file**. Their behavior is
 only exercised transitively through `PsstNotifierTests` / `PsstConfigurationTests`. That leaves
-documented behaviors marked 🟡 in [USER_STORIES.md](../USER_STORIES.md) (B2, B3, D3, A3) even
+documented behaviors marked 🟡 in [USER_STORIES.md](../USER_STORIES.md) (B2, D3, A3) even
 though the code is shipped and working. The headline goal is "every documented behavior has a
 direct test" ([BIBLE §8](../BIBLE.md#PST-§8)).
 
@@ -43,7 +43,7 @@ a later, Windows-trait-gated integration RFC.
 ## Phased plan (with risk)
 
 1. `CarrierGatewaysTests` — normalize/fanout/combine. *Risk: low.*
-2. `PsstViaResolverTests` — precedence incl. env var (inject via the `envVarValue` parameter to
+2. `PsstViaResolverTests` — env var > contact default > Email precedence (inject via the `envVarValue` parameter to
    avoid global env mutation). *Risk: low.*
 3. `ContactBookTests` + `ContactStoreTests` — round-trip via a temp roaming root
    (`MINDATTIC_VAULT_ROAMING_ROOT`). *Risk: low–medium (filesystem temp cleanup).*
@@ -53,5 +53,5 @@ a later, Windows-trait-gated integration RFC.
 ## Graduates into
 
 - [BIBLE §6](../BIBLE.md#PST-§6) (Verified state — upgrade entries to cite the new tests)
-- [USER_STORIES.md](../USER_STORIES.md): promotes PST-US-B2, B3, D3, A3 from 🟡 to ✅; closes
+- [USER_STORIES.md](../USER_STORIES.md): promotes PST-US-B2, D3, A3 from 🟡 to ✅; closes
   backlog items PST-US-B6, B7, D5, A4.

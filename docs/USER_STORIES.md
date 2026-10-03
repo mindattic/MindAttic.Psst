@@ -4,12 +4,12 @@ project: MindAttic.Psst
 code: PST
 layer: stories
 status: living
-updated: 2026-06-19
+updated: 2026-10-03
 ---
 
 # MindAttic.Psst — User Stories
 
-> ✅ done (shipped & tested) · 🟡 partial · ⬜ planned · 🗑️ cut. Every ✅ cites its verifying test.
+> ✅ done (shipped & tested) · 🟡 partial · ⬜ planned. Every ✅ cites its verifying test.
 > Test tokens are xUnit method names in `MindAttic.Psst.Tests`. See
 > [BIBLE §6](BIBLE.md#PST-§6) for the aggregate build/test evidence.
 
@@ -27,28 +27,23 @@ updated: 2026-06-19
 - **PST-US-A2 ✅** As a developer, I can pass `--silent` to skip the audio cue, so I don't make
   noise in a quiet room. *Given `--silent`, When notifying, Then the sound player is never invoked
   but the SMS still sends.* *(verified by `NotifyAsync_Silent_DoesNotInvokeSoundPlayer`.)*
-- **PST-US-A3 ✅** As a developer, I get a readable failure label instead of a raw NTSTATUS code,
+- **PST-US-A3 🟡** As a developer, I get a readable failure label instead of a raw NTSTATUS code,
   so a Ctrl-C reads as "Ctrl-C" not "exit -1073741510". *(Behavior lives in `WrapAsync`/
-  `DescribeExitCode`; covered indirectly — see backlog item to add a direct test.)* 🟡
-  *(downgraded: no dedicated test for `DescribeExitCode` mapping.)*
+  `DescribeExitCode`; no dedicated test for the mapping yet — see backlog PST-US-A4.)*
 
 ## Epic B — Send & transports
 
-- **PST-US-B1 ✅** As a user, I can send a one-off SMS with `psst sms <to> <message>`, resolving
+- **PST-US-B1 🟡** As a user, I can send a one-off SMS with `psst sms <to> <message>`, resolving
   the recipient from the contact book or a bare US number. *(Contact resolution verified by
   `ContactBook.Find` behavior; phone normalization by `CarrierGateways` usage — exercised through
-  config/notifier tests.)* 🟡 *(downgraded: `SmsAsync` argv→send happy path has no direct
-  end-to-end test; flag parsing and transports are tested in isolation.)*
-- **PST-US-B2 ✅** As a user, my message reaches an unknown-carrier phone via email-to-SMS
+  config/notifier tests. The `SmsAsync` argv→send happy path has no direct end-to-end test;
+  flag parsing and transports are tested in isolation.)*
+- **PST-US-B2 🟡** As a user, my message reaches an unknown-carrier phone via email-to-SMS
   fanout across every known US gateway, so I don't have to know the carrier. *Given a 10-digit
   number, When sending via email, Then one message goes to each carrier gateway.* *(Fanout/normalize
   logic verified through `PsstConfigurationTests` recipient handling and `PsstNotifierTests`
-  transport dispatch; `CarrierGateways` is pure and deterministic.)* 🟡 *(downgraded: no test
-  file dedicated to `CarrierGateways` directly.)*
-- **PST-US-B3 🗑️** *(cut by PST-A3)* Transport selection via `--via twilio|email`. Removed with
-  Twilio support; only email-to-SMS remains. Future transports will reintroduce per-send selection.
-- **PST-US-B4 🗑️** *(cut by PST-A3)* Twilio REST endpoint + basic auth. Removed with
-  `TwilioSmsClient`.
+  transport dispatch; `CarrierGateways` is pure and deterministic, but has no dedicated test file — see backlog
+  PST-US-B6.)*
 - **PST-US-B5 ✅** As a user, exactly one transport is attempted per send (no surprise fallback),
   matching the resolved `via`. *(verified by `NotifyAsync_FirstTransportSucceeds_DoesNotCallSecond`,
   `NotifyAsync_NoTransports_ReturnsEmptyAttempts`, and `NotifyResult` accounting in
@@ -102,18 +97,17 @@ updated: 2026-06-19
   case-insensitive name collision suffixing. *`ContactBook`
   add/remove/find semantics are exercised through the notifier/config tests, but there is no
   dedicated `ContactBookTests`/`ContactStoreTests` and the `Contacts` CLI handler is untested.*
-- **PST-US-D4 ✅** As a user, `psst ping` shows which transports are configured and what would
+- **PST-US-D4 🟡** As a user, `psst ping` shows which transports are configured and what would
   fire, without sending. *Print-only diagnostics (`Ping`); relies on `PsstConfiguration` +
-  `CarrierGateways`, both verified above.* 🟡 *(downgraded: `Ping` output itself is not
-  asserted by a test.)*
+  `CarrierGateways`; the `Ping` output itself is not asserted by a test.*
 
 ## Epic E — Sound
 
-- **PST-US-E1 ✅** As a user, `psst sound` plays the embedded clip, preferring MP3 (NAudio) and
+- **PST-US-E1 🟡** As a user, `psst sound` plays the embedded clip, preferring MP3 (NAudio) and
   falling back to WAV (SoundPlayer), degrading silently off-Windows. *Pipeline integration
   verified by `NotifyAsync_SoundPlayerFails_PropagatesFalseAndKeepsError`,
-  `SoundPlayed_FalseWhenSoundFailed`.* 🟡 *(downgraded: actual audio output / NAudio-vs-WAV
-  fallback on hardware is verified manually; only the result-propagation seam is unit-tested.)*
+  `SoundPlayed_FalseWhenSoundFailed`. Actual audio output and the NAudio-vs-WAV fallback on
+  hardware are verified manually; only the result-propagation seam is unit-tested.*
 
 ## Priority backlog
 
@@ -121,17 +115,11 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 
 1. ⬜ **PST-US-B6** Add `CarrierGatewaysTests` — direct coverage of `NormalizeTo10Digits`,
    `BuildFanout`, `Combine` (promotes B2 to a clean ✅).
-2. ⬜ **PST-US-B7** Add `PsstViaResolverTests` — precedence chain `--via` > env > contact > default
-   (promotes B3).
+2. ⬜ **PST-US-B7** Add `PsstViaResolverTests` — precedence chain `PSST_VIA` env > contact >
+   default, with unrecognised values falling through.
 3. ⬜ **PST-US-D5** Add `ContactBookTests` + `ContactStoreTests` — add/remove/find, collision
    suffixing, round-trip persistence (promotes D3).
 4. ⬜ **PST-US-A4** Add a `DescribeExitCode` mapping test (promotes A3).
 5. ⬜ **PST-US-C6** Integration-test the `schtasks` list/cancel round-trip behind a Windows-only
    trait (promotes C4/C5).
 6. ⬜ **PST-US-D6** Assert `psst ping` output shape (promotes D4).
-
-### Audit log
-
-No story has had its original ask rewritten since Codex adoption (2026-06-07); the stories above
-were reverse-engineered from the existing shipped code and `README.md`. Future changes that alter
-a story's intent must preserve the original ask here, marked "(original spec — audit log)".

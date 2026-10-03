@@ -7,7 +7,7 @@ using MindAttic.Psst.Configuration;
 /// <summary>
 /// JSON persistence for the Psst contact book. The file lives next to
 /// <c>settings.json</c> in the per-app roaming bucket so it's user-editable
-/// without going through user secrets.
+/// by hand.
 ///
 /// <para>Path: <c>%APPDATA%\MindAttic\Psst\contacts.json</c></para>
 /// <para>Schema:</para>
@@ -35,9 +35,9 @@ public static class ContactStore
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters =
         {
-            // Serialize PsstVia as lowercase string ("twilio"/"email") so
-            // the on-disk schema stays human-editable and matches the
-            // --via CLI flag's accepted values.
+            // Serialize PsstVia as a lowercase string ("email") so the
+            // on-disk schema stays human-editable and matches the values
+            // PsstViaResolver accepts.
             new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
         },
     };

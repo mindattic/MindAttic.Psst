@@ -432,7 +432,7 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
 </ol>
 <p>On a non-Windows host, <code>PsstSoundPlayer.PlayAsync</code> returns a failure (<code>"not windows"</code>) rather than throwing, matching the fact that this project targets <code>net10.0-windows</code> only.</p>
 <h3 id="sms-transport-and-carrier-fanout">SMS transport and carrier fanout</h3>
-<p>Psst has exactly one SMS transport (<code>PsstVia.Email</code>; Twilio support was removed in <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19">PST-A3</a>). It works by emailing the recipient's number, formatted as an address, at every known US carrier's email-to-SMS gateway domain:</p>
+<p>Psst has exactly one SMS transport (<code>PsstVia.Email</code>). It works by emailing the recipient's number, formatted as an address, at every known US carrier's email-to-SMS gateway domain:</p>
 <table><thead><tr>
 <th>Carrier (and MVNOs)</th>
 <th>Gateway domain</th>
@@ -581,7 +581,7 @@ psst test     # sends a real SMS, check your phone</code></pre>
 </tbody></table>
 <p><code>PsstConfiguration.Load</code> returns <code>Email: null</code> if any of <code>smtpHost</code>, <code>username</code>, <code>password</code> or <code>from</code> is missing (all four missing means silently unconfigured; one to three missing appends an entry to <code>Errors</code>, surfaced by <code>psst ping</code>). It also flags "email is configured but neither <code>toEmail</code> nor <code>to</code> is set" when you have wired SMTP credentials but forgot a recipient.</p>
 <h3 id="transport-selection">Transport selection</h3>
-<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>). The abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general so a future transport slots in without a rewrite (see <a href="docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19">PST-A3</a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
+<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>). The abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general so a future transport slots in without a rewrite (see <a href="docs/BIBLE.md#PST-LAW-4">PST-LAW-4</a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
 <ol>
 <li>The <code>PSST_VIA</code> environment variable (only <code>email</code>, case-insensitive, is recognised; anything else falls through).</li>
 <li>The target contact's <code>defaultVia</code> (set in <code>contacts.json</code>).</li>
@@ -644,7 +644,7 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 ├── MindAttic.Psst.Tests/            # xUnit test project
 ├── docs/
 │   ├── BIBLE.md                       L0: architecture, Laws, verified state
-│   ├── AMENDMENTS.md                  L1: append-only change log
+│   ├── AMENDMENTS.md                  L1: pending decisions (normally empty)
 │   ├── USER_STORIES.md                L2: test-cited stories + backlog
 │   ├── BIBLE.digest.md                GENERATED, never hand-edit
 │   └── rfc/                           design notes
@@ -677,7 +677,7 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 <h2 id="documentation">Documentation</h2>
 <ul>
 <li><a href="docs/BIBLE.md">docs/BIBLE.md</a>: architecture, rationale, the project's Laws and verified build/test evidence.</li>
-<li><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a>: append-only change history.</li>
+<li><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a>: pending decisions not yet folded into the bible (normally empty).</li>
 <li><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a>: story-by-story backlog, and which behaviours are test-verified versus manual-only.</li>
 <li><a href="docs/BIBLE.digest.md">docs/BIBLE.digest.md</a>: generated digest of the bible.</li>
 <li><a href="AGENTS.md">AGENTS.md</a>: instructions for coding agents working in this repo. Agents: read the <a href="#opt-in-only">Opt-in only</a> rule above before touching any command line.</li>

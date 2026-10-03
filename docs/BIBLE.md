@@ -4,7 +4,7 @@ project: MindAttic.Psst
 code: PST
 layer: bible
 status: living
-updated: 2026-06-07
+updated: 2026-10-03
 ---
 
 # MindAttic.Psst — Project Bible
@@ -80,7 +80,7 @@ the instant it lands.
 - **`MindAttic.Psst.Cli`** — the `psst.exe` console front door (`AssemblyName=psst`,
   `OutputType=Exe`). Owns argv parsing, subcommand dispatch, and Windows Task Scheduler
   integration. File: `MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj`.
-- **`MindAttic.Psst.Tests`** — xUnit test project (114 tests). File:
+- **`MindAttic.Psst.Tests`** — xUnit test project (100 tests). File:
   `MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj`.
 
 ### 4.2 Domain model — NOUNS {#PST-§4.2}
@@ -175,11 +175,11 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 
 ## 6. Verified state {#PST-§6}
 
-Evidence captured 2026-06-07 on this working tree.
+Evidence captured 2026-10-03 on this working tree.
 
 - ✅ **Build**: `dotnet build MindAttic.Psst.slnx -c Release` — clean (all three projects compile).
 - ✅ **Tests**: `dotnet test MindAttic.Psst.slnx -c Release` — **100 passed, 0 failed, 0 skipped**
-  (Duration ~0.4s).
+  (Duration ~0.1s).
 - ✅ **Notification pipeline** (`PsstNotifier`) — verified by `PsstNotifierTests` (10 tests:
   silent suppression, concurrent sound+SMS, transport selection, cancellation propagation).
 - ✅ **Configuration loading** (`PsstConfiguration`) — verified by `PsstConfigurationTests` and
@@ -197,7 +197,7 @@ Evidence captured 2026-06-07 on this working tree.
 ## 7. Active frontier {#PST-§7}
 
 - See [`docs/USER_STORIES.md`](USER_STORIES.md) for the epic/story breakdown and backlog.
-- See [`docs/rfc/`](rfc/) for open design notes. Current: [RFC 0001](rfc/0001-example.md).
+- See [`docs/rfc/`](rfc/) for open design notes. Current: [RFC 0001 — direct-test coverage for the pure helpers](rfc/0001-direct-test-coverage.md).
 - No structured L5 canon-as-data is warranted (see this bible's §4 — the only catalog,
   `CarrierGateways.UnitedStatesDomains`, is small and lives in code by design per
   [PST-LAW-3](#PST-LAW-3)). Revisit if international carriers or per-region routing get added.
@@ -217,8 +217,10 @@ Anything not meeting all five is `🟡 partial` or `⬜ planned` — never `✅`
 ## 9. Glossary {#PST-§9}
 
 - **Wrap** — `psst -- <command>`: run a command to completion and notify on exit.
-- **Transport (via)** — the channel a send uses. Currently: `email` (carrier email-to-SMS). The
-  `PsstVia` enum and `PsstViaResolver` are structured for future alternative transports.
+- **Transport (via)** — the channel a send uses. Currently only `email` (carrier email-to-SMS).
+  `ISmsClient`, `PsstVia`, `PsstViaResolver` and `PsstNotifier.BuildClients` keep their abstraction
+  shape so another transport is added as an enum value, a `TryParse` branch and a `BuildClients`
+  case. `PSST_VIA` or a contact `defaultVia` with an unrecognised value falls through to `email`.
 - **Fanout** — sending one email-to-SMS message to every known US carrier gateway for a number,
   since the carrier is unknown ([PST-LAW-3](#PST-LAW-3)).
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.

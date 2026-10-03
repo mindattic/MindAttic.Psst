@@ -322,7 +322,7 @@ On a non-Windows host, `PsstSoundPlayer.PlayAsync` returns a failure (`"not wind
 
 ### SMS transport and carrier fanout
 
-Psst has exactly one SMS transport (`PsstVia.Email`; Twilio support was removed in [PST-A3](docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19)). It works by emailing the recipient's number, formatted as an address, at every known US carrier's email-to-SMS gateway domain:
+Psst has exactly one SMS transport (`PsstVia.Email`). It works by emailing the recipient's number, formatted as an address, at every known US carrier's email-to-SMS gateway domain:
 
 | Carrier (and MVNOs) | Gateway domain |
 |---|---|
@@ -417,7 +417,7 @@ All email and recipient settings live under one `IConfiguration` section, `MindA
 
 ### Transport selection
 
-`PsstVia` is currently a single-member enum (`Email`). The abstraction (`ISmsClient`, `PsstVia`, `PsstViaResolver`, `PsstNotifier.BuildClients`) is kept general so a future transport slots in without a rewrite (see [PST-A3](docs/AMENDMENTS.md#PST-A3-remove-twilio-email-only-sms-transport-2026-06-19)), but today every code path resolves to `email`. Precedence, highest to lowest:
+`PsstVia` is currently a single-member enum (`Email`). The abstraction (`ISmsClient`, `PsstVia`, `PsstViaResolver`, `PsstNotifier.BuildClients`) is kept general so a future transport slots in without a rewrite (see [PST-LAW-4](docs/BIBLE.md#PST-LAW-4)), but today every code path resolves to `email`. Precedence, highest to lowest:
 
 1. The `PSST_VIA` environment variable (only `email`, case-insensitive, is recognised; anything else falls through).
 2. The target contact's `defaultVia` (set in `contacts.json`).
@@ -478,7 +478,7 @@ MindAttic.Psst/
 ├── MindAttic.Psst.Tests/            # xUnit test project
 ├── docs/
 │   ├── BIBLE.md                       L0: architecture, Laws, verified state
-│   ├── AMENDMENTS.md                  L1: append-only change log
+│   ├── AMENDMENTS.md                  L1: pending decisions (normally empty)
 │   ├── USER_STORIES.md                L2: test-cited stories + backlog
 │   ├── BIBLE.digest.md                GENERATED, never hand-edit
 │   └── rfc/                           design notes
@@ -514,7 +514,7 @@ Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-r
 ## Documentation
 
 - [docs/BIBLE.md](docs/BIBLE.md): architecture, rationale, the project's Laws and verified build/test evidence.
-- [docs/AMENDMENTS.md](docs/AMENDMENTS.md): append-only change history.
+- [docs/AMENDMENTS.md](docs/AMENDMENTS.md): pending decisions not yet folded into the bible (normally empty).
 - [docs/USER_STORIES.md](docs/USER_STORIES.md): story-by-story backlog, and which behaviours are test-verified versus manual-only.
 - [docs/BIBLE.digest.md](docs/BIBLE.digest.md): generated digest of the bible.
 - [AGENTS.md](AGENTS.md): instructions for coding agents working in this repo. Agents: read the [Opt-in only](#opt-in-only) rule above before touching any command line.

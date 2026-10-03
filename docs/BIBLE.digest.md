@@ -87,8 +87,10 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 ## 9. Glossary {#PST-§9}
 
 - **Wrap** — `psst -- <command>`: run a command to completion and notify on exit.
-- **Transport (via)** — the channel a send uses. Currently: `email` (carrier email-to-SMS). The
-  `PsstVia` enum and `PsstViaResolver` are structured for future alternative transports.
+- **Transport (via)** — the channel a send uses. Currently only `email` (carrier email-to-SMS).
+  `ISmsClient`, `PsstVia`, `PsstViaResolver` and `PsstNotifier.BuildClients` keep their abstraction
+  shape so another transport is added as an enum value, a `TryParse` branch and a `BuildClients`
+  case. `PSST_VIA` or a contact `defaultVia` with an unrecognised value falls through to `email`.
 - **Fanout** — sending one email-to-SMS message to every known US carrier gateway for a number,
   since the carrier is unknown ([PST-LAW-3](#PST-LAW-3)).
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
@@ -103,31 +105,6 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 
 ## Status index
 
-- done: 16   partial: 9   planned: 7   cut: 3
+- done: 11   partial: 9   planned: 7
 - (counts are glyph occurrences in docs/USER_STORIES.md)
-
-## Latest amendment
-
-## PST-A1 — Adopt the Codex documentation standard (supersedes —)
-
-**What changed.** Installed the MindAttic Codex canonical-documentation layout for this repo:
-`docs/BIBLE.md` (L0), `docs/USER_STORIES.md` (L2), this `docs/AMENDMENTS.md` (L1),
-`docs/rfc/0001-example.md`, the generated `docs/BIBLE.digest.md`, the `tools/codex.ps1`
-doctor/digest CLI, and the `.claude/hooks/inject-digest.ps1` SessionStart hook wired into
-`.claude/settings.json`. Added a Codex section to `CLAUDE.md`.
-
-**Why.** Give the project a single source of truth with stable IDs, test-cited stories, and an
-auto-injected digest so every Claude session starts from authoritative context.
-
-**Migration.** None — this repo had no prior canon docs (`game_bible.md`, `ARCHITECTURE.md`,
-etc.). All content was reverse-engineered from the existing source, `README.md`, and `CLAUDE.md`;
-no source/application code was modified. The bible **inherits** the pre-existing org-wide
-[`MindAttic.HouseRules.md`](../../MindAttic.HouseRules.md) by reference (not copied, not modified).
-
-**Defaults chosen under ambiguity.**
-- **CODE = `PST`** (PascalCase initials of "Psst"; also matches the "first 3 letters" fallback).
-- **Domain class = `library`** — the shippable artifact is the `MindAttic.Psst` NuGet package;
-  `psst.exe` is a CLI front door over it ([HOUSE-LAW-6](../../MindAttic.HouseRules.md#HOUSE-LAW-6)).
-- **No L5 canon-as-data** — the only catalog (`CarrierGateways.UnitedStatesDomains`) is small and
-  deliberately code-resident per [PST-LAW-3](BIBLE.md#PST-LAW-3).
 

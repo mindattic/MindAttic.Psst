@@ -28,8 +28,7 @@ try {
 [MindAttic Codex — AUTHORITATIVE PROJECT CONTEXT]
 The following digest is the source of truth for MindAttic.Psst (code: PST). It is generated from
 docs/BIBLE.md. Treat its laws (PST-LAW-n) and the inherited MindAttic House Rules (HOUSE-LAW-n) as
-binding. When the bible and an amendment conflict, the amendment wins. Full detail lives in
-docs/BIBLE.md, docs/USER_STORIES.md, and docs/AMENDMENTS.md.
+binding. Full detail lives in docs/BIBLE.md and docs/USER_STORIES.md.
 
 "@
 

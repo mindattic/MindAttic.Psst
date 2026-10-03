@@ -9,7 +9,7 @@
     Subcommands:
       doctor   Validate the Codex docs; exit non-zero on any hard error.
       digest   Regenerate docs/BIBLE.digest.md from BIBLE.md (sections 1, 3, 5, 9) plus a
-               status index and the latest amendment head.
+               status index and any pending decision heads from AMENDMENTS.md.
 
 .EXAMPLE
     pwsh tools/codex.ps1 doctor
@@ -338,13 +338,11 @@ function Invoke-Digest {
         $cut     = Count-Sub $st ([string]([char]0xD83D) + [char]0xDDD1) # wastebasket
     }
 
-    # Latest amendment head.
-    $amendHead = ''
+    # Pending decision heads (normally none).
+    $pending = @()
     if (Test-Path $AmendmentsPath) {
         $am = Read-Text $AmendmentsPath
-        $am = $am -replace "(?s)^---.*?---\r?\n", ''
-        $m = [regex]::Match($am, '(?ms)^##\s+PST-A\d+.*?(?=^##\s+PST-A\d+|\z)')
-        if ($m.Success) { $amendHead = $m.Value.TrimEnd() }
+        foreach ($m in [regex]::Matches($am, '(?m)^##\s+PST-A\d+.*$')) { $pending += $m.Value.Trim() }
     }
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
@@ -374,19 +372,21 @@ function Invoke-Digest {
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('## Status index')
     [void]$sb.AppendLine('')
-    [void]$sb.AppendLine("- done: $done   partial: $partial   planned: $planned   cut: $cut")
+    [void]$sb.AppendLine("- done: $done   partial: $partial   planned: $planned")
     [void]$sb.AppendLine('- (counts are glyph occurrences in docs/USER_STORIES.md)')
     [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('## Latest amendment')
-    [void]$sb.AppendLine('')
-    if ($amendHead) { [void]$sb.AppendLine($amendHead) } else { [void]$sb.AppendLine('(none)') }
-    [void]$sb.AppendLine('')
+    if ($pending.Count -gt 0) {
+        [void]$sb.AppendLine('## Pending decisions (docs/AMENDMENTS.md)')
+        [void]$sb.AppendLine('')
+        foreach ($h in $pending) { [void]$sb.AppendLine($h) }
+        [void]$sb.AppendLine('')
+    }
 
     # Write UTF-8 without BOM.
     $enc = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($DigestPath, $sb.ToString(), $enc)
     Write-Host "Wrote $((Resolve-Path $DigestPath -Relative))" -ForegroundColor Green
-    Write-Host "  status index: done=$done partial=$partial planned=$planned cut=$cut"
+    Write-Host "  status index: done=$done partial=$partial planned=$planned"
 }
 
 # ---------------------------------------------------------------------------
