@@ -123,3 +123,12 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 5. ⬜ **PST-US-C6** Integration-test the `schtasks` list/cancel round-trip behind a Windows-only
    trait (promotes C4/C5).
 6. ⬜ **PST-US-D6** Assert `psst ping` output shape (promotes D4).
+
+## Tickets
+> Permanent log of every change and fix — this repo's ticket system. Rows are append-only: never
+> delete or reword one; only move its Status (open → closed / wont-do) and fill in Ref. Status is
+> a word, not a glyph, so tickets don't count toward the story index. Keep this section last.
+
+| ID | Date | Type | Status | Summary | Ref |
+|---|---|---|---|---|---|
+| PST-T1 | 2026-10-12 | docs | closed | Start the permanent ticket log in USER_STORIES.md | — |
