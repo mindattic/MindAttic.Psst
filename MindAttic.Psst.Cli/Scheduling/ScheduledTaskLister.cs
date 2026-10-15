@@ -12,8 +12,8 @@ using System.Threading.Tasks;
 
 /// <summary>
 /// Read-side counterpart to <see cref="ScheduledTaskRegistrar"/>. Lists
-/// pending <c>MindAttic.Psst.*</c> entries currently registered with
-/// Windows Task Scheduler, enriches each one with the launcher's JSON
+/// pending <c>\MindAttic\Psst\MindAttic.Psst.*</c> entries currently
+/// registered with Windows Task Scheduler, enriches each one with the launcher's JSON
 /// sidecar (recipient, message, repeat, interval) when available, and
 /// supports cancellation by task name.
 ///
@@ -27,6 +27,13 @@ using System.Threading.Tasks;
 /// </summary>
 public static class ScheduledTaskLister
 {
+    /// <summary>
+    /// Every Psst scheduled task lives under this Task Scheduler folder (see
+    /// <see cref="ScheduledTaskRegistrar"/>), never at the root — the prefix
+    /// both identifies "is this ours" and lets the trailing id be recovered.
+    /// </summary>
+    private const string TaskNamePrefix = @"MindAttic\Psst\MindAttic.Psst.";
+
     /// <summary>Single pending entry returned by <see cref="ListAsync"/>.</summary>
     public sealed record PendingTask(
         string TaskName,
@@ -36,9 +43,9 @@ public static class ScheduledTaskLister
         DateTime? FireTimeFromSidecar);
 
     /// <summary>
-    /// Enumerate every currently-scheduled <c>MindAttic.Psst.*</c> task in
-    /// the user's root Task Scheduler folder, in ascending NextRunTime
-    /// order. Tasks not authored by Psst are filtered out.
+    /// Enumerate every currently-scheduled <c>\MindAttic\Psst\MindAttic.Psst.*</c>
+    /// task, in ascending NextRunTime order. Tasks not authored by Psst are
+    /// filtered out.
     /// </summary>
     public static async Task<IReadOnlyList<PendingTask>> ListAsync()
     {
@@ -51,9 +58,9 @@ public static class ScheduledTaskLister
             // schtasks prefixes task names with a "\" (folder root); strip
             // it before doing prefix matching.
             var taskName = row.TaskName.TrimStart('\\');
-            if (!taskName.StartsWith("MindAttic.Psst.", StringComparison.Ordinal)) continue;
+            if (!taskName.StartsWith(TaskNamePrefix, StringComparison.Ordinal)) continue;
 
-            var id = taskName["MindAttic.Psst.".Length..];
+            var id = taskName[TaskNamePrefix.Length..];
             var (meta, fireTime) = TryReadSidecar(Path.Combine(dir, $"{id}.json"));
             results.Add(new PendingTask(taskName, row.NextRunTime, row.TaskToRun, meta, fireTime));
         }
@@ -73,8 +80,8 @@ public static class ScheduledTaskLister
     {
         if (string.IsNullOrWhiteSpace(taskName))
             return "task name is required";
-        if (!taskName.StartsWith("MindAttic.Psst.", StringComparison.Ordinal))
-            return $"refusing to cancel '{taskName}' — only MindAttic.Psst.* tasks are managed by psst";
+        if (!taskName.TrimStart('\\').StartsWith(TaskNamePrefix, StringComparison.Ordinal))
+            return $"refusing to cancel '{taskName}' — only {TaskNamePrefix}* tasks are managed by psst";
 
         var psi = new ProcessStartInfo("schtasks.exe")
         {
@@ -109,7 +116,7 @@ public static class ScheduledTaskLister
         // Best-effort cleanup of the launcher + sidecar. Failures are
         // non-fatal — the user cares whether the task is gone, not
         // whether the paper trail is.
-        var id = taskName["MindAttic.Psst.".Length..];
+        var id = taskName.TrimStart('\\')[TaskNamePrefix.Length..];
         var dir = ScheduledTaskRegistrar.ScheduledDirectory();
         TryDelete(Path.Combine(dir, $"{id}.cmd"));
         TryDelete(Path.Combine(dir, $"{id}.json"));

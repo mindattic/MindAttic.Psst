@@ -248,7 +248,7 @@ Under the hood, `--schedule` (and its alias `--start`):
 1. Resolves the time to a concrete local `DateTime` using next-occurrence semantics.
 2. Writes a small launcher `.cmd` file to `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that invokes `psst.exe sms …` with the original argv minus `--schedule` (so the deferred run does not re-schedule itself), keeps `--repeat`/`--interval`, and sets `PSST_FROM_SCHEDULE=1` so the deferred fire runs the send path. It then runs `schtasks /Delete /TN <task-name> /F` and removes the JSON sidecar, so successful runs leave nothing pending behind.
 3. Writes a JSON sidecar `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.json` with the recipient, message, repeat and interval values, used by `psst scheduled` to render a meaningful listing.
-4. Calls `schtasks.exe /Create /SC ONCE /TN MindAttic.Psst.<id> /TR <launcher> /SD <date> /ST <time> /F`.
+4. Calls `schtasks.exe /Create /SC ONCE /TN MindAttic\Psst\MindAttic.Psst.<id> /TR <launcher> /SD <date> /ST <time> /F` — every MindAttic scheduled task lives under `\MindAttic\<Project>\` rather than the Task Scheduler root.
 
 `schtasks /Z` (auto-delete after run) is intentionally not used: it requires an `EndBoundary` that Windows does not synthesize from a bare `/SC ONCE`. The launcher self-deletes instead, with the same effect and no edge cases.
 
@@ -260,9 +260,9 @@ Listing reads the actual Task Scheduler state (via `schtasks /Query /FO CSV /V`)
 PS> psst scheduled
 Pending Psst tasks (2):
 
-  ⏰ 2026-05-22 12:53   MindAttic.Psst.82894a30e2ad
+  ⏰ 2026-05-22 12:53   MindAttic\Psst\MindAttic.Psst.82894a30e2ad
      → jordan (5555550123): "deploy finished"
-  ⏰ 2026-05-23 09:00   MindAttic.Psst.f73f70ff1e97
+  ⏰ 2026-05-23 09:00   MindAttic\Psst\MindAttic.Psst.f73f70ff1e97
      → jordan (5555550123): "standup reminder"
      ↻ 5 sends every 1m
 
@@ -273,10 +273,10 @@ Cancel all:  psst scheduled clear
 If you prefer the raw Windows tools, both still work:
 
 ```powershell
-Get-ScheduledTask -TaskName 'MindAttic.Psst.*' | Format-Table TaskName, State, `
+Get-ScheduledTask -TaskPath '\MindAttic\Psst\' | Format-Table TaskName, State, `
     @{N='NextRun';E={(Get-ScheduledTaskInfo $_).NextRunTime}}
 
-schtasks /Query /TN MindAttic.Psst.*    # tab-complete task name first
+schtasks /Query /TN MindAttic\Psst\MindAttic.Psst.*    # tab-complete task name first
 schtasks /Delete /TN <task-name> /F     # cancel one
 ```
 

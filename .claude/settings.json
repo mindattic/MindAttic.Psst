@@ -1,8 +1,4 @@
-﻿{
-    "statusLine":  {
-                       "type":  "command",
-                       "command":  "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/.claude/statusline.ps1\""
-                   },
+{
     "hooks":  {
                   "SessionStart":  [
                                        {
@@ -13,16 +9,6 @@
                                                          }
                                                      ]
                                        }
-                                   ],
-                  "UserPromptSubmit":  [
-                                           {
-                                               "hooks":  [
-                                                             {
-                                                                 "type":  "command",
-                                                                 "command":  "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/quickload-on-do.ps1\""
-                                                             }
-                                                         ]
-                                           }
-                                       ]
+                                   ]
               }
 }

@@ -96,9 +96,11 @@ public static class ScheduledTaskRegistrar
             return new RegistrationResult(false, "", "", fireTime, $"fire time {fireTime:yyyy-MM-dd HH:mm} is not in the future");
 
         // Unique-ish task and launcher names. The hex slice keeps the task
-        // name short enough to fit comfortably in Task Scheduler's UI.
+        // name short enough to fit comfortably in Task Scheduler's UI. Every
+        // MindAttic scheduled task lives under \MindAttic\<Project>\ rather
+        // than the Task Scheduler root, so it's all visible in one place.
         var id = Guid.NewGuid().ToString("N")[..12];
-        var taskName = $"MindAttic.Psst.{id}";
+        var taskName = $@"MindAttic\Psst\MindAttic.Psst.{id}";
 
         var launcherPath = await WriteLauncherCmdAsync(id, taskName, psstExePath, psstArgs);
 
