@@ -117,8 +117,8 @@ function Invoke-Doctor {
         if ($fm.ContainsKey('layer') -and $fm.layer -ne $cf.Layer) {
             Fail "front-matter layer '$($fm.layer)' != expected '$($cf.Layer)': $rel"
         }
-        if ($fm.ContainsKey('code') -and $fm.code -ne 'PST') {
-            Warn "front-matter code '$($fm.code)' != 'PST': $rel"
+        if ($fm.ContainsKey('code') -and $fm.code -ne 'M.PSST') {
+            Warn "front-matter code '$($fm.code)' != 'M.PSST': $rel"
         }
         if ($fm.ContainsKey('updated') -and $fm.updated -notmatch '^\d{4}-\d{2}-\d{2}$') {
             Fail "front-matter 'updated' not YYYY-MM-DD: $rel"
@@ -151,7 +151,7 @@ function Invoke-Doctor {
     if ($anchors.Count -gt 0) { Pass "$($anchors.Count) anchor id(s), all unique" }
 
     # Cross-ref links of the form [text](...#anchor). Resolve same-doc (#x) and
-    # cross-doc (file.md#x) links into a #PST- / #HOUSE- anchor namespace.
+    # cross-doc (file.md#x) links into a #M.PSST- / #HOUSE- anchor namespace.
     $linkRefs = 0
     foreach ($kv in $allText.GetEnumerator()) {
         $rel = (Resolve-Path $kv.Key -Relative)
@@ -217,13 +217,13 @@ function Invoke-Doctor {
             }
         }
         # Evaluate per story *block* (a story bullet may wrap across several physical lines, so
-        # its test citation can land on a different line than the PST-US-id/done marker). Split on
+        # its test citation can land on a different line than the M.PSST-US-id/done marker). Split on
         # the bullet boundary and check the whole block: a done story must cite >=1 real test
         # token somewhere in its block.
-        $blocks = [regex]::Split($storyText, '(?m)(?=^\s*-\s+\*\*PST-US-)')
+        $blocks = [regex]::Split($storyText, '(?m)(?=^\s*-\s+\*\*M\.PSST-US-)')
         $missingCited = @()
         foreach ($block in $blocks) {
-            $idMatch = [regex]::Match($block, 'PST-US-[A-Za-z0-9]+')
+            $idMatch = [regex]::Match($block, 'M\.PSST-US-[A-Za-z0-9]+')
             if (-not $idMatch.Success) { continue }
             # A "done" story has the check-mark on the SAME bullet as its id (header line).
             $headLine = ($block -split "\r?\n")[0]
@@ -342,7 +342,7 @@ function Invoke-Digest {
     $pending = @()
     if (Test-Path $AmendmentsPath) {
         $am = Read-Text $AmendmentsPath
-        foreach ($m in [regex]::Matches($am, '(?m)^##\s+PST-A\d+.*$')) { $pending += $m.Value.Trim() }
+        foreach ($m in [regex]::Matches($am, '(?m)^##\s+M\.PSST-A\d+.*$')) { $pending += $m.Value.Trim() }
     }
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
@@ -350,7 +350,7 @@ function Invoke-Digest {
     [void]$sb.AppendLine('---')
     [void]$sb.AppendLine('codex: 1')
     [void]$sb.AppendLine('project: MindAttic.Psst')
-    [void]$sb.AppendLine('code: PST')
+    [void]$sb.AppendLine('code: M.PSST')
     [void]$sb.AppendLine('layer: digest')
     [void]$sb.AppendLine('status: living')
     [void]$sb.AppendLine("updated: $today")

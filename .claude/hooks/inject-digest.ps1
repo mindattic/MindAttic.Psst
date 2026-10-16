@@ -26,8 +26,8 @@ try {
 
     $preamble = @"
 [MindAttic Codex - AUTHORITATIVE PROJECT CONTEXT]
-The following digest is the source of truth for MindAttic.Psst (code: PST). It is generated from
-docs/BIBLE.md. Treat its laws (PST-LAW-n) and the inherited MindAttic House Rules (HOUSE-LAW-n) as
+The following digest is the source of truth for MindAttic.Psst (code: M.PSST). It is generated from
+docs/BIBLE.md. Treat its laws (M.PSST-LAW-n) and the inherited MindAttic House Rules (HOUSE-LAW-n) as
 binding. Full detail lives in docs/BIBLE.md and docs/USER_STORIES.md.
 
 "@

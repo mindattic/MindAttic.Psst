@@ -1,7 +1,7 @@
 ---
 codex: 1
 project: MindAttic.Psst
-code: PST
+code: M.PSST
 layer: rfc
 status: planned
 updated: 2026-10-03
@@ -16,7 +16,7 @@ Several pure, deterministic units (`CarrierGateways`, `PsstViaResolver`, `Contac
 only exercised transitively through `PsstNotifierTests` / `PsstConfigurationTests`. That leaves
 documented behaviors marked 🟡 in [USER_STORIES.md](../USER_STORIES.md) (B2, D3, A3) even
 though the code is shipped and working. The headline goal is "every documented behavior has a
-direct test" ([BIBLE §8](../BIBLE.md#PST-§8)).
+direct test" ([BIBLE §8](../BIBLE.md#M.PSST-§8)).
 
 ## Options compared
 
@@ -52,6 +52,6 @@ a later, Windows-trait-gated integration RFC.
 
 ## Graduates into
 
-- [BIBLE §6](../BIBLE.md#PST-§6) (Verified state — upgrade entries to cite the new tests)
-- [USER_STORIES.md](../USER_STORIES.md): promotes PST-US-B2, D3, A3 from 🟡 to ✅; closes
-  backlog items PST-US-B6, B7, D5, A4.
+- [BIBLE §6](../BIBLE.md#M.PSST-§6) (Verified state — upgrade entries to cite the new tests)
+- [USER_STORIES.md](../USER_STORIES.md): promotes M.PSST-US-B2, D3, A3 from 🟡 to ✅; closes
+  backlog items M.PSST-US-B6, B7, D5, A4.

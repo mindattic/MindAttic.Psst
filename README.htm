@@ -168,7 +168,7 @@ psst -- dotnet test       # the real thing</code></pre>
 <h2 id="opt-in-only">Opt-in only</h2>
 <p>Psst is invoked only when a human explicitly asks to be notified, never auto-wrapped around a command by a script, an agent, or another tool. This is the org-wide rule HOUSE-LAW-9 in the MindAttic house rules, and it exists because Psst is easy to over-apply: it plays an audible sound at the operator's desk and sends a real SMS to a real phone. If you are an AI coding agent working in any MindAttic repo, do not prepend <code>psst --</code> to shell commands unless the user's own message asked for a Psst notification ("run this with psst", "notify me when this finishes via psst"). Every other invocation (<code>psst test</code>, <code>psst sms</code>, <code>psst ping</code> and so on) is likewise something a human runs deliberately.</p>
 <h2 id="what-it-is-and-is-not">What it is and is not</h2>
-<p>See <a href="docs/BIBLE.md#PST-§1">BIBLE sections 1 to 3</a> for the full canon. In short:</p>
+<p>See <a href="docs/BIBLE.md#M.PSST-§1">BIBLE sections 1 to 3</a> for the full canon. In short:</p>
 <ul>
 <li>It is a one-shot Windows CLI (<code>psst.exe</code>) plus the library behind it (<code>MindAttic.Psst</code>, <code>net10.0-windows</code>) that plays a local sound and/or sends an SMS, on demand or when a wrapped command exits.</li>
 <li>It is not a background daemon, a system-tray app, a cross-platform tool, a general messaging platform, a multi-transport fan-out engine (it fans out across carrier gateways for one number, not across transports), or a secret store.</li>
@@ -267,7 +267,7 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <td>Cancel every pending Psst task in one pass, reporting per-task success or failure.</td>
 </tr>
 </tbody></table>
-<p>Already-fired tasks never appear in the listing; they self-delete on completion (see <a href="docs/BIBLE.md#PST-LAW-6">PST-LAW-6</a>).</p>
+<p>Already-fired tasks never appear in the listing; they self-delete on completion (see <a href="docs/BIBLE.md#M.PSST-LAW-6">M.PSST-LAW-6</a>).</p>
 <h2 id="repeat-and-schedule">Repeat and schedule</h2>
 <p>The <code>sms</code> subcommand accepts three optional flags that let you drip a message at a cadence, defer it to a specific time, or both. Flags may appear anywhere in the <code>sms</code> argument list.</p>
 <table><thead><tr>
@@ -420,10 +420,10 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
 <ol>
 <li>Sound playback and SMS dispatch run concurrently (<code>Task.WhenAll</code>): the audio cue never delays the text, and vice versa.</li>
 <li>Sound is skipped when <code>--silent</code> was passed, and always for <code>sms</code>.</li>
-<li>SMS is dispatched through exactly one resolved transport (see <a href="docs/BIBLE.md#PST-LAW-4">PST-LAW-4</a>), with no silent fallback to a second transport once the resolved one is configured.</li>
+<li>SMS is dispatched through exactly one resolved transport (see <a href="docs/BIBLE.md#M.PSST-LAW-4">M.PSST-LAW-4</a>), with no silent fallback to a second transport once the resolved one is configured.</li>
 <li>The caller gets back a <code>NotifyResult</code>: whether sound played, and the list of SMS attempts (transport name plus success/detail) so the CLI can print a pass/fail line per attempt.</li>
 </ol>
-<p>Sound failure is always best-effort; it never fails the overall notification (<code>PST-LAW-2</code>).</p>
+<p>Sound failure is always best-effort; it never fails the overall notification (<code>M.PSST-LAW-2</code>).</p>
 <h3 id="sound-playback">Sound playback</h3>
 <p>The embedded clip (<code>icq-uh-oh.mp3</code> / <code>icq-uh-oh.wav</code>, shipped inside the <code>MindAttic.Psst</code> assembly as embedded resources) plays via two transports, tried in order:</p>
 <ol>
@@ -470,7 +470,7 @@ schtasks /Delete /TN &lt;task-name&gt; /F     # cancel one</code></pre>
 <td><code>msg.fi.google.com</code></td>
 </tr>
 </tbody></table>
-<p>For a 10-digit number <code>5551234567</code>, the fanout is <code>5551234567@tmomail.net, 5551234567@txt.att.net, …</code>, one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know which carrier the number belongs to (<a href="docs/BIBLE.md#PST-LAW-3">PST-LAW-3</a>). You can also pin one explicit address via <code>toEmail</code>; it is unioned with the auto-fanout list and deduplicated.</p>
+<p>For a 10-digit number <code>5551234567</code>, the fanout is <code>5551234567@tmomail.net, 5551234567@txt.att.net, …</code>, one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know which carrier the number belongs to (<a href="docs/BIBLE.md#M.PSST-LAW-3">M.PSST-LAW-3</a>). You can also pin one explicit address via <code>toEmail</code>; it is unioned with the auto-fanout list and deduplicated.</p>
 <p>Delivery itself is a real SMTP send via MailKit, using the SMTP account you configure.</p>
 <h2 id="setting-up-sms-credentials">Setting up SMS credentials</h2>
 <p>Psst reads from several sources, lowest to highest precedence:</p>
@@ -581,7 +581,7 @@ psst test     # sends a real SMS, check your phone</code></pre>
 </tbody></table>
 <p><code>PsstConfiguration.Load</code> returns <code>Email: null</code> if any of <code>smtpHost</code>, <code>username</code>, <code>password</code> or <code>from</code> is missing (all four missing means silently unconfigured; one to three missing appends an entry to <code>Errors</code>, surfaced by <code>psst ping</code>). It also flags "email is configured but neither <code>toEmail</code> nor <code>to</code> is set" when you have wired SMTP credentials but forgot a recipient.</p>
 <h3 id="transport-selection">Transport selection</h3>
-<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>). The abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general so a future transport slots in without a rewrite (see <a href="docs/BIBLE.md#PST-LAW-4">PST-LAW-4</a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
+<p><code>PsstVia</code> is currently a single-member enum (<code>Email</code>). The abstraction (<code>ISmsClient</code>, <code>PsstVia</code>, <code>PsstViaResolver</code>, <code>PsstNotifier.BuildClients</code>) is kept general so a future transport slots in without a rewrite (see <a href="docs/BIBLE.md#M.PSST-LAW-4">M.PSST-LAW-4</a>), but today every code path resolves to <code>email</code>. Precedence, highest to lowest:</p>
 <ol>
 <li>The <code>PSST_VIA</code> environment variable (only <code>email</code>, case-insensitive, is recognised; anything else falls through).</li>
 <li>The target contact's <code>defaultVia</code> (set in <code>contacts.json</code>).</li>
@@ -620,7 +620,7 @@ dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Rel
 <tr>
 <td><code>MindAttic.Psst.Tests</code></td>
 <td>test assembly</td>
-<td>xUnit test suite; see <a href="docs/BIBLE.md#PST-§6">BIBLE section 6</a> for the last verified count.</td>
+<td>xUnit test suite; see <a href="docs/BIBLE.md#M.PSST-§6">BIBLE section 6</a> for the last verified count.</td>
 </tr>
 </tbody></table>
 <p>Versioning is whole-number only (<code>&lt;Version&gt;N.0.0&lt;/Version&gt;</code>, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard <code>dotnet build</code> / <code>dotnet pack</code> flow.</p>

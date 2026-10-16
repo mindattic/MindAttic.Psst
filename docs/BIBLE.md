@@ -1,7 +1,7 @@
 ---
 codex: 1
 project: MindAttic.Psst
-code: PST
+code: M.PSST
 layer: bible
 status: living
 updated: 2026-10-03
@@ -12,22 +12,22 @@ updated: 2026-10-03
 > Single source of truth for what MindAttic.Psst IS, is NOT, and the rules that keep it coherent.
 > README.md says how to build/run; this says how to think about the system.
 
-## 1. The one sentence {#PST-§1}
+## 1. The one sentence {#M.PSST-§1}
 
 MindAttic.Psst is a Windows .NET notifier — a library plus a `psst` CLI front door — that
 **plays a short attention-getter sound locally and sends an SMS** the moment a wrapped CLI
 command finishes (or on demand), so you can walk away from a long-running build and still know
 the instant it lands.
 
-## 2. The product promise {#PST-§2}
+## 2. The product promise {#M.PSST-§2}
 
 - **Wrap anything, get pinged.** `psst -- <command> [args...]` runs the command to completion,
   captures its exit code and wall-clock duration, then fires sound + SMS — whether it passed or
-  failed. See [§4.3](#PST-§4) `WrapAsync`.
+  failed. See [§4.3](#M.PSST-§4) `WrapAsync`.
 - **Know without looking.** The message states *what* ran, the *OK/FAIL* status (with a readable
   label for well-known NTSTATUS crash codes), and *how long* it took.
 - **SMS that actually arrives.** Email-to-SMS carrier fanout is the transport. Exactly one
-  transport per send — no implicit fallback chain at send time ([LAW-4](#PST-LAW-4)).
+  transport per send — no implicit fallback chain at send time ([LAW-4](#M.PSST-LAW-4)).
 - **No daemon, no service.** A single CLI. Nothing listening on a port; deferred/repeat sends
   detach to Windows Task Scheduler rather than holding the shell open.
 - **Credentials stay out of the repo.** Secrets resolve through the shared `MindAttic.Vault`
@@ -35,7 +35,7 @@ the instant it lands.
 - **Drip & defer.** `psst sms` supports `--repeat N`, `--interval/--every <dur>`, and
   `--schedule/--start <time>` with next-occurrence semantics.
 
-## 3. What it is NOT {#PST-§3}
+## 3. What it is NOT {#M.PSST-§3}
 
 - **NOT a background daemon or system tray app.** It is a one-shot CLI process. There is no
   resident listener, no port, no service registration.
@@ -44,12 +44,12 @@ the instant it lands.
 - **NOT a general messaging/chat platform.** It sends short one-way notifications, not
   conversations. No inbound handling.
 - **NOT a multi-transport fan-out at send time.** A single send picks exactly one transport
-  ([LAW-4](#PST-LAW-4)); the only fan-out is across *carrier email gateways* for one recipient.
+  ([LAW-4](#M.PSST-LAW-4)); the only fan-out is across *carrier email gateways* for one recipient.
 - **NOT a secret store.** It reads credentials from `MindAttic.Vault`; it never persists them and
   never commits them.
 - **NOT semantically versioned.** Whole-number bumps only ([HOUSE-LAW-1](../../MindAttic.HouseRules.md#HOUSE-LAW-1)).
 
-## 4. Architecture canon {#PST-§4}
+## 4. Architecture canon {#M.PSST-§4}
 
 ```
                        ┌─────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ the instant it lands.
         └──────────────────────────────┘
 ```
 
-### 4.1 Projects {#PST-§4.1}
+### 4.1 Projects {#M.PSST-§4.1}
 
 - **`MindAttic.Psst`** — the library/NuGet package (`net10.0-windows`). Owns the notifier,
   transports, sound, configuration, contacts, and duration/time parsing. File:
@@ -83,7 +83,7 @@ the instant it lands.
 - **`MindAttic.Psst.Tests`** — xUnit test project (103 tests). File:
   `MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj`.
 
-### 4.2 Domain model — NOUNS {#PST-§4.2}
+### 4.2 Domain model — NOUNS {#M.PSST-§4.2}
 
 - **`PsstNotifier`** (`MindAttic.Psst/PsstNotifier.cs`) — orchestrates one notification: runs
   sound + SMS concurrently, dispatches via the chosen transport, returns a `NotifyResult`.
@@ -107,7 +107,7 @@ the instant it lands.
 - **`PendingTask`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskLister.cs`) — one pending
   scheduled send.
 
-### 4.3 Key services — VERBS {#PST-§4.3}
+### 4.3 Key services — VERBS {#M.PSST-§4.3}
 
 - **`PsstNotifier.NotifyAsync`** — play sound (unless silent) + dispatch SMS concurrently.
 - **`PsstCli.RunAsync` / `WrapAsync` / `TestAsync` / `Ping` / `SoundAsync` / `Contacts` / `SmsAsync` / `ScheduledAsync`**
@@ -123,7 +123,7 @@ the instant it lands.
 - **`ScheduledTaskRegistrar.RegisterAsync`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskRegistrar.cs`) — register a deferred send with `schtasks`.
 - **`ScheduledTaskLister.ListAsync/Cancel`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskLister.cs`) — enumerate/cancel pending sends.
 
-## 5. The Laws {#PST-§5}
+## 5. The Laws {#M.PSST-§5}
 
 > This project **inherits the org-wide House Rules** at
 > [`MindAttic.HouseRules.md`](../../MindAttic.HouseRules.md) by reference — they are not restated
@@ -136,44 +136,44 @@ the instant it lands.
 >
 > The laws below are **project-specific** to MindAttic.Psst.
 
-### PST-LAW-1 — Notify on every exit, pass or fail {#PST-LAW-1}
+### M.PSST-LAW-1 — Notify on every exit, pass or fail {#M.PSST-LAW-1}
 A wrapped command fires the notification regardless of its exit code, and even when the child
 fails to start. `psst` returns the child's exit code so it stays transparent in a pipeline.
 (`WrapAsync`.)
 
-### PST-LAW-2 — Sound is best-effort and non-blocking {#PST-LAW-2}
+### M.PSST-LAW-2 — Sound is best-effort and non-blocking {#M.PSST-LAW-2}
 Audio failure never fails a notification. Sound and SMS run concurrently
 (`Task.WhenAll`); the MP3 path falls back to WAV, and a non-Windows host degrades to a
 silent no-op rather than throwing. (`PsstNotifier.NotifyAsync`, `PsstSoundPlayer.PlayAsync`.)
 
-### PST-LAW-3 — Over-send, never miss {#PST-LAW-3}
+### M.PSST-LAW-3 — Over-send, never miss {#M.PSST-LAW-3}
 For an unknown carrier, the email transport fans out to *every* known US carrier gateway for the
 recipient's number. Duplicate buzzes are an acceptable price for guaranteed delivery; wrong-carrier
 gateways silently drop. (`CarrierGateways`.)
 
-### PST-LAW-4 — One transport per send, no send-time fallback {#PST-LAW-4}
+### M.PSST-LAW-4 — One transport per send, no send-time fallback {#M.PSST-LAW-4}
 Each send resolves to exactly one transport via the `PsstViaResolver` precedence chain
 (`PSST_VIA` env var > contact default > project default Email). The notifier never silently
 tries a second transport after the chosen one is configured. (`PsstNotifier.BuildClients`,
 `PsstViaResolver.Resolve`.)
 
-### PST-LAW-5 — Don't recursively re-schedule {#PST-LAW-5}
+### M.PSST-LAW-5 — Don't recursively re-schedule {#M.PSST-LAW-5}
 A deferred/scheduled invocation must run the send path, never re-register itself. The launcher
 sets `PSST_FROM_SCHEDULE=1`, `--schedule`/`--start` is stripped from the deferred argv, and the
 implicit-`--schedule now` branch is suppressed when running as a scheduler child.
 (`PsstCli.ParseSmsFlags`, `IsFromScheduler`.)
 
-### PST-LAW-6 — Self-cleaning scheduled tasks {#PST-LAW-6}
+### M.PSST-LAW-6 — Self-cleaning scheduled tasks {#M.PSST-LAW-6}
 A successful scheduled send leaves nothing pending: the launcher `.cmd` deletes its own
 Task Scheduler entry and JSON sidecar after firing (rather than relying on `schtasks /Z`).
 (`ScheduledTaskRegistrar`, README "How `--schedule` is implemented".)
 
-### PST-LAW-7 — Machine-facing values are culture-invariant {#PST-LAW-7}
+### M.PSST-LAW-7 — Machine-facing values are culture-invariant {#M.PSST-LAW-7}
 Values that cross a process or OS boundary (elapsed time in the SMS body, the `schtasks /ST`
 time/date) are formatted with `CultureInfo.InvariantCulture`, so a comma-decimal locale can't
 emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 
-## 6. Verified state {#PST-§6}
+## 6. Verified state {#M.PSST-§6}
 
 Evidence captured 2026-10-03 on this working tree.
 
@@ -197,27 +197,27 @@ Evidence captured 2026-10-03 on this working tree.
 - 🟡 **Live `schtasks` registration / sound playback on hardware** — unit-tested at the
   string/quoting level; the actual OS calls are validated manually.
 
-## 7. Active frontier {#PST-§7}
+## 7. Active frontier {#M.PSST-§7}
 
 - See [`docs/USER_STORIES.md`](USER_STORIES.md) for the epic/story breakdown and backlog.
 - See [`docs/rfc/`](rfc/) for open design notes. Current: [RFC 0001 — direct-test coverage for the pure helpers](rfc/0001-direct-test-coverage.md).
 - No structured L5 canon-as-data is warranted (see this bible's §4 — the only catalog,
   `CarrierGateways.UnitedStatesDomains`, is small and lives in code by design per
-  [PST-LAW-3](#PST-LAW-3)). Revisit if international carriers or per-region routing get added.
+  [M.PSST-LAW-3](#M.PSST-LAW-3)). Revisit if international carriers or per-region routing get added.
 
-## 8. Quality bar {#PST-§8}
+## 8. Quality bar {#M.PSST-§8}
 
 A feature is **done** (`✅`) only when:
 1. It builds clean under `dotnet build -c Release` (no new warnings introduced).
-2. It is covered by a green xUnit test named in [§6](#PST-§6) or in the owning story.
-3. User-facing behavior is reflected in `README.md` and (if it changes a rule) in [§5](#PST-§5).
-4. Anything that crosses a process/OS/locale boundary is culture-invariant ([PST-LAW-7](#PST-LAW-7)).
+2. It is covered by a green xUnit test named in [§6](#M.PSST-§6) or in the owning story.
+3. User-facing behavior is reflected in `README.md` and (if it changes a rule) in [§5](#M.PSST-§5).
+4. Anything that crosses a process/OS/locale boundary is culture-invariant ([M.PSST-LAW-7](#M.PSST-LAW-7)).
 5. No secret is hard-coded ([HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3)) and versioning
    stays whole-number ([HOUSE-LAW-1](../../MindAttic.HouseRules.md#HOUSE-LAW-1)).
 
 Anything not meeting all five is `🟡 partial` or `⬜ planned` — never `✅`.
 
-## 9. Glossary {#PST-§9}
+## 9. Glossary {#M.PSST-§9}
 
 - **Wrap** — `psst -- <command>`: run a command to completion and notify on exit.
 - **Transport (via)** — the channel a send uses. Currently only `email` (carrier email-to-SMS).
@@ -225,13 +225,13 @@ Anything not meeting all five is `🟡 partial` or `⬜ planned` — never `✅`
   shape so another transport is added as an enum value, a `TryParse` branch and a `BuildClients`
   case. `PSST_VIA` or a contact `defaultVia` with an unrecognised value falls through to `email`.
 - **Fanout** — sending one email-to-SMS message to every known US carrier gateway for a number,
-  since the carrier is unknown ([PST-LAW-3](#PST-LAW-3)).
+  since the carrier is unknown ([M.PSST-LAW-3](#M.PSST-LAW-3)).
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
 - **Sidecar** — the JSON metadata file written next to a scheduled launcher `.cmd` so
   `psst scheduled` can render a meaningful listing.
 - **Launcher** — the self-deleting `.cmd` Task Scheduler runs to perform a deferred send
-  ([PST-LAW-6](#PST-LAW-6)).
+  ([M.PSST-LAW-6](#M.PSST-LAW-6)).
 - **Vault chain** — the `MindAttic.Vault` `IConfiguration` source order (vault files →
   appsettings → `%APPDATA%` settings.json → env vars) credentials resolve through.
 - **PSST_FROM_SCHEDULE** — env marker set by the launcher so a deferred send doesn't recursively
-  re-schedule itself ([PST-LAW-5](#PST-LAW-5)).
+  re-schedule itself ([M.PSST-LAW-5](#M.PSST-LAW-5)).

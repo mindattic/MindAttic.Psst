@@ -1,7 +1,7 @@
 ---
 codex: 1
 project: MindAttic.Psst
-code: PST
+code: M.PSST
 layer: amendments
 status: living
 updated: 2026-10-03

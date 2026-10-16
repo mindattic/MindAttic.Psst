@@ -79,7 +79,7 @@ Psst is invoked only when a human explicitly asks to be notified, never auto-wra
 
 ## What it is and is not
 
-See [BIBLE sections 1 to 3](docs/BIBLE.md#PST-§1) for the full canon. In short:
+See [BIBLE sections 1 to 3](docs/BIBLE.md#M.PSST-§1) for the full canon. In short:
 
 - It is a one-shot Windows CLI (`psst.exe`) plus the library behind it (`MindAttic.Psst`, `net10.0-windows`) that plays a local sound and/or sends an SMS, on demand or when a wrapped command exits.
 - It is not a background daemon, a system-tray app, a cross-platform tool, a general messaging platform, a multi-transport fan-out engine (it fans out across carrier gateways for one number, not across transports), or a secret store.
@@ -176,7 +176,7 @@ Inspect and cancel deferred `sms` sends registered via `--schedule`/`--start` (d
 | `psst scheduled cancel <task-name>` (aliases `rm`, `delete`, `del`) | Delete one task plus its launcher `.cmd` and its JSON sidecar. |
 | `psst scheduled clear` | Cancel every pending Psst task in one pass, reporting per-task success or failure. |
 
-Already-fired tasks never appear in the listing; they self-delete on completion (see [PST-LAW-6](docs/BIBLE.md#PST-LAW-6)).
+Already-fired tasks never appear in the listing; they self-delete on completion (see [M.PSST-LAW-6](docs/BIBLE.md#M.PSST-LAW-6)).
 
 ## Repeat and schedule
 
@@ -306,10 +306,10 @@ Every notification (from `-- <command>`, `test`, or an `sms` send) goes through 
 
 1. Sound playback and SMS dispatch run concurrently (`Task.WhenAll`): the audio cue never delays the text, and vice versa.
 2. Sound is skipped when `--silent` was passed, and always for `sms`.
-3. SMS is dispatched through exactly one resolved transport (see [PST-LAW-4](docs/BIBLE.md#PST-LAW-4)), with no silent fallback to a second transport once the resolved one is configured.
+3. SMS is dispatched through exactly one resolved transport (see [M.PSST-LAW-4](docs/BIBLE.md#M.PSST-LAW-4)), with no silent fallback to a second transport once the resolved one is configured.
 4. The caller gets back a `NotifyResult`: whether sound played, and the list of SMS attempts (transport name plus success/detail) so the CLI can print a pass/fail line per attempt.
 
-Sound failure is always best-effort; it never fails the overall notification (`PST-LAW-2`).
+Sound failure is always best-effort; it never fails the overall notification (`M.PSST-LAW-2`).
 
 ### Sound playback
 
@@ -335,7 +335,7 @@ Psst has exactly one SMS transport (`PsstVia.Email`). It works by emailing the r
 | MetroPCS | `mymetropcs.com` |
 | Google Fi | `msg.fi.google.com` |
 
-For a 10-digit number `5551234567`, the fanout is `5551234567@tmomail.net, 5551234567@txt.att.net, …`, one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know which carrier the number belongs to ([PST-LAW-3](docs/BIBLE.md#PST-LAW-3)). You can also pin one explicit address via `toEmail`; it is unioned with the auto-fanout list and deduplicated.
+For a 10-digit number `5551234567`, the fanout is `5551234567@tmomail.net, 5551234567@txt.att.net, …`, one message per gateway. The wrong-carrier gateways silently drop the mail; the recipient's real carrier delivers it. Duplicate buzzes across gateways are an accepted cost of guaranteed delivery without needing to know which carrier the number belongs to ([M.PSST-LAW-3](docs/BIBLE.md#M.PSST-LAW-3)). You can also pin one explicit address via `toEmail`; it is unioned with the auto-fanout list and deduplicated.
 
 Delivery itself is a real SMTP send via MailKit, using the SMTP account you configure.
 
@@ -417,7 +417,7 @@ All email and recipient settings live under one `IConfiguration` section, `MindA
 
 ### Transport selection
 
-`PsstVia` is currently a single-member enum (`Email`). The abstraction (`ISmsClient`, `PsstVia`, `PsstViaResolver`, `PsstNotifier.BuildClients`) is kept general so a future transport slots in without a rewrite (see [PST-LAW-4](docs/BIBLE.md#PST-LAW-4)), but today every code path resolves to `email`. Precedence, highest to lowest:
+`PsstVia` is currently a single-member enum (`Email`). The abstraction (`ISmsClient`, `PsstVia`, `PsstViaResolver`, `PsstNotifier.BuildClients`) is kept general so a future transport slots in without a rewrite (see [M.PSST-LAW-4](docs/BIBLE.md#M.PSST-LAW-4)), but today every code path resolves to `email`. Precedence, highest to lowest:
 
 1. The `PSST_VIA` environment variable (only `email`, case-insensitive, is recognised; anything else falls through).
 2. The target contact's `defaultVia` (set in `contacts.json`).
@@ -448,7 +448,7 @@ All projects target `net10.0-windows`:
 |---|---|---|
 | `MindAttic.Psst` | `MindAttic.Psst` library / NuGet package, version 1.0.0 | Notifier, transports, sound, configuration, contacts, duration and time parsing. Depends on NAudio, MailKit and MindAttic.Vault. |
 | `MindAttic.Psst.Cli` | `psst.exe` (`AssemblyName=psst`) | Argument parsing, subcommand dispatch, Windows Task Scheduler integration. |
-| `MindAttic.Psst.Tests` | test assembly | xUnit test suite; see [BIBLE section 6](docs/BIBLE.md#PST-§6) for the last verified count. |
+| `MindAttic.Psst.Tests` | test assembly | xUnit test suite; see [BIBLE section 6](docs/BIBLE.md#M.PSST-§6) for the last verified count. |
 
 Versioning is whole-number only (`<Version>N.0.0</Version>`, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard `dotnet build` / `dotnet pack` flow.
 
