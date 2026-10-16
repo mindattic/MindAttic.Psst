@@ -436,7 +436,7 @@ All email and recipient settings live under one `IConfiguration` section, `MindA
 dotnet restore MindAttic.Psst.slnx
 dotnet build MindAttic.Psst.slnx --configuration Release --no-restore
 
-# Run the xUnit test suite
+# Run the NUnit test suite
 dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Release --no-build
 ```
 
@@ -448,7 +448,7 @@ All projects target `net10.0-windows`:
 |---|---|---|
 | `MindAttic.Psst` | `MindAttic.Psst` library / NuGet package, version 1.0.0 | Notifier, transports, sound, configuration, contacts, duration and time parsing. Depends on NAudio, MailKit and MindAttic.Vault. |
 | `MindAttic.Psst.Cli` | `psst.exe` (`AssemblyName=psst`) | Argument parsing, subcommand dispatch, Windows Task Scheduler integration. |
-| `MindAttic.Psst.Tests` | test assembly | xUnit test suite; see [BIBLE section 6](docs/BIBLE.md#M.PSST-§6) for the last verified count. |
+| `MindAttic.Psst.Tests` | test assembly | NUnit test suite; see [BIBLE section 6](docs/BIBLE.md#M.PSST-§6) for the last verified count. |
 
 Versioning is whole-number only (`<Version>N.0.0</Version>`, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard `dotnet build` / `dotnet pack` flow.
 
@@ -475,7 +475,7 @@ MindAttic.Psst/
 │   ├── PsstCli.cs                     argv parsing, subcommand handlers
 │   ├── Program.cs                     entry point
 │   └── Scheduling/                    ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
-├── MindAttic.Psst.Tests/            # xUnit test project
+├── MindAttic.Psst.Tests/            # NUnit test project
 ├── docs/
 │   ├── BIBLE.md                       L0: architecture, Laws, verified state
 │   ├── AMENDMENTS.md                  L1: pending decisions (normally empty)

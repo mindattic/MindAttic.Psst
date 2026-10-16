@@ -3,7 +3,7 @@ namespace MindAttic.Psst.Tests;
 using System;
 using System.IO;
 using System.Linq;
-using Xunit;
+using NUnit.Framework;
 
 /// <summary>
 /// Repo-level guards for the PowerShell hooks Claude Code runs. Windows PowerShell 5.1 reads a
@@ -20,15 +20,15 @@ public class RepoScriptsTests
         return dir?.FullName ?? throw new InvalidOperationException("MindAttic.Psst.slnx not found above the test output.");
     }
 
-    [Fact]
+    [Test]
     public void SessionStartHook_IsPureAscii()
     {
         var bytes = File.ReadAllBytes(Path.Combine(RepoRoot(), ".claude", "hooks", "inject-digest.ps1"));
         var bad = Array.FindIndex(bytes, b => b > 0x7F);
-        Assert.True(bad < 0, $"non-ASCII byte 0x{(bad < 0 ? 0 : bytes[bad]):X2} at offset {bad}");
+        Assert.That(bad < 0, Is.True, $"non-ASCII byte 0x{(bad < 0 ? 0 : bytes[bad]):X2} at offset {bad}");
     }
 
-    [Fact]
+    [Test]
     public void BomLessClaudeScripts_AreAscii()
     {
         var dir = Path.Combine(RepoRoot(), ".claude");
@@ -41,6 +41,6 @@ public class RepoScriptsTests
             })
             .Select(Path.GetFileName)
             .ToArray();
-        Assert.Empty(offenders);
+        Assert.That(offenders, Is.Empty);
     }
 }

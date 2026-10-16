@@ -3,7 +3,7 @@ namespace MindAttic.Psst.Tests;
 using MindAttic.Psst;
 using MindAttic.Psst.Sms;
 using MindAttic.Psst.Sound;
-using Xunit;
+using NUnit.Framework;
 
 public class PsstNotifierTests
 {
@@ -13,21 +13,21 @@ public class PsstNotifierTests
     private static Func<CancellationToken, Task<PsstPlayResult>> SoundFail(string error = "boom") =>
         _ => Task.FromResult(PsstPlayResult.Fail(error));
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_NoTransports_ReturnsEmptyAttempts()
     {
         var notifier = new PsstNotifier(Array.Empty<ISmsClient>(), SoundFail());
 
         var result = await notifier.NotifyAsync("hi", silent: true);
 
-        Assert.False(result.SoundPlayed);
-        Assert.Null(result.Sound);
-        Assert.Empty(result.SmsAttempts);
-        Assert.False(result.AnySmsSent);
-        Assert.Null(result.FirstSuccess);
+        Assert.That(result.SoundPlayed, Is.False);
+        Assert.That(result.Sound, Is.Null);
+        Assert.That(result.SmsAttempts, Is.Empty);
+        Assert.That(result.AnySmsSent, Is.False);
+        Assert.That(result.FirstSuccess, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_Silent_DoesNotInvokeSoundPlayer()
     {
         var calls = 0;
@@ -37,36 +37,36 @@ public class PsstNotifierTests
 
         var result = await notifier.NotifyAsync("hi", silent: true);
 
-        Assert.Equal(0, calls);
-        Assert.False(result.SoundPlayed);
-        Assert.Null(result.Sound);
+        Assert.That(calls, Is.EqualTo(0));
+        Assert.That(result.SoundPlayed, Is.False);
+        Assert.That(result.Sound, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_NotSilent_InvokesSoundPlayerAndReportsResult()
     {
         var notifier = new PsstNotifier(Array.Empty<ISmsClient>(), SoundOk("MP3 (NAudio)"));
 
         var result = await notifier.NotifyAsync("hi");
 
-        Assert.True(result.SoundPlayed);
-        Assert.NotNull(result.Sound);
-        Assert.Equal("MP3 (NAudio)", result.Sound!.Transport);
+        Assert.That(result.SoundPlayed, Is.True);
+        Assert.That(result.Sound, Is.Not.Null);
+        Assert.That(result.Sound!.Transport, Is.EqualTo("MP3 (NAudio)"));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_SoundPlayerFails_PropagatesFalseAndKeepsError()
     {
         var notifier = new PsstNotifier(Array.Empty<ISmsClient>(), SoundFail("no audio device"));
 
         var result = await notifier.NotifyAsync("hi");
 
-        Assert.False(result.SoundPlayed);
-        Assert.NotNull(result.Sound);
-        Assert.Equal("no audio device", result.Sound!.Error);
+        Assert.That(result.SoundPlayed, Is.False);
+        Assert.That(result.Sound, Is.Not.Null);
+        Assert.That(result.Sound!.Error, Is.EqualTo("no audio device"));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_FirstTransportSucceeds_DoesNotCallSecond()
     {
         var first = new StubClient("Primary", success: true);
@@ -75,14 +75,14 @@ public class PsstNotifierTests
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);
 
-        Assert.Equal(1, first.CallCount);
-        Assert.Equal(0, second.CallCount);
-        Assert.Single(result.SmsAttempts);
-        Assert.True(result.AnySmsSent);
-        Assert.Equal("Primary", result.FirstSuccess!.Transport);
+        Assert.That(first.CallCount, Is.EqualTo(1));
+        Assert.That(second.CallCount, Is.EqualTo(0));
+        Assert.That(result.SmsAttempts, Has.Exactly(1).Items);
+        Assert.That(result.AnySmsSent, Is.True);
+        Assert.That(result.FirstSuccess!.Transport, Is.EqualTo("Primary"));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_FirstTransportFails_FallsBackToSecond()
     {
         var first = new StubClient("Primary", success: false, detail: "401");
@@ -91,15 +91,15 @@ public class PsstNotifierTests
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);
 
-        Assert.Equal(1, first.CallCount);
-        Assert.Equal(1, second.CallCount);
-        Assert.Equal(2, result.SmsAttempts.Count);
-        Assert.False(result.SmsAttempts[0].Success);
-        Assert.True(result.SmsAttempts[1].Success);
-        Assert.Equal("Secondary", result.FirstSuccess!.Transport);
+        Assert.That(first.CallCount, Is.EqualTo(1));
+        Assert.That(second.CallCount, Is.EqualTo(1));
+        Assert.That(result.SmsAttempts.Count, Is.EqualTo(2));
+        Assert.That(result.SmsAttempts[0].Success, Is.False);
+        Assert.That(result.SmsAttempts[1].Success, Is.True);
+        Assert.That(result.FirstSuccess!.Transport, Is.EqualTo("Secondary"));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_AllTransportsFail_ReportsAllAttempts()
     {
         var first = new StubClient("Primary", success: false, detail: "401");
@@ -108,12 +108,12 @@ public class PsstNotifierTests
         var notifier = new PsstNotifier(new[] { first, second }, SoundFail());
         var result = await notifier.NotifyAsync("hi", silent: true);
 
-        Assert.Equal(2, result.SmsAttempts.Count);
-        Assert.False(result.AnySmsSent);
-        Assert.Null(result.FirstSuccess);
+        Assert.That(result.SmsAttempts.Count, Is.EqualTo(2));
+        Assert.That(result.AnySmsSent, Is.False);
+        Assert.That(result.FirstSuccess, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_PassesMessageToTransport()
     {
         var client = new StubClient("X", success: true);
@@ -121,10 +121,10 @@ public class PsstNotifierTests
 
         await notifier.NotifyAsync("hello world", silent: true);
 
-        Assert.Equal("hello world", client.LastMessage);
+        Assert.That(client.LastMessage, Is.EqualTo("hello world"));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_PropagatesCancellationToken()
     {
         var client = new StubClient("X", success: true);
@@ -133,10 +133,10 @@ public class PsstNotifierTests
 
         await notifier.NotifyAsync("x", silent: true, cancellationToken: cts.Token);
 
-        Assert.Equal(cts.Token, client.LastToken);
+        Assert.That(client.LastToken, Is.EqualTo(cts.Token));
     }
 
-    [Fact]
+    [Test]
     public async Task NotifyAsync_RunsSoundAndSmsInParallel()
     {
         // Sound holds for ~100ms; SMS also holds for ~100ms. If they were
@@ -156,8 +156,7 @@ public class PsstNotifierTests
         await task;
         sw.Stop();
 
-        Assert.True(sw.Elapsed < TimeSpan.FromMilliseconds(180),
-            $"expected concurrent execution but took {sw.ElapsedMilliseconds}ms");
+        Assert.That(sw.Elapsed < TimeSpan.FromMilliseconds(180), Is.True, $"expected concurrent execution but took {sw.ElapsedMilliseconds}ms");
 
         static async Task<PsstPlayResult> DelayedSound(TaskCompletionSource gate, CancellationToken ct)
         {

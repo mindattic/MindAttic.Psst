@@ -80,7 +80,7 @@ the instant it lands.
 - **`MindAttic.Psst.Cli`** — the `psst.exe` console front door (`AssemblyName=psst`,
   `OutputType=Exe`). Owns argv parsing, subcommand dispatch, and Windows Task Scheduler
   integration. File: `MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj`.
-- **`MindAttic.Psst.Tests`** — xUnit test project (103 tests). File:
+- **`MindAttic.Psst.Tests`** — NUnit test project (103 tests). File:
   `MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj`.
 
 ### 4.2 Domain model — NOUNS {#M.PSST-§4.2}
@@ -209,7 +209,7 @@ Evidence captured 2026-10-03 on this working tree.
 
 A feature is **done** (`✅`) only when:
 1. It builds clean under `dotnet build -c Release` (no new warnings introduced).
-2. It is covered by a green xUnit test named in [§6](#M.PSST-§6) or in the owning story.
+2. It is covered by a green NUnit test named in [§6](#M.PSST-§6) or in the owning story.
 3. User-facing behavior is reflected in `README.md` and (if it changes a rule) in [§5](#M.PSST-§5).
 4. Anything that crosses a process/OS/locale boundary is culture-invariant ([M.PSST-LAW-7](#M.PSST-LAW-7)).
 5. No secret is hard-coded ([HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3)) and versioning

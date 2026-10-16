@@ -2,7 +2,7 @@ namespace MindAttic.Psst.Tests.Time;
 
 using System;
 using MindAttic.Psst.Time;
-using Xunit;
+using NUnit.Framework;
 
 /// <summary>
 /// Behavior tests for <see cref="DurationParser"/>. These cover the
@@ -12,105 +12,98 @@ using Xunit;
 /// </summary>
 public class DurationParserTests
 {
-    [Theory]
-    [InlineData("30s", 30)]
-    [InlineData("0s",  0)]
-    [InlineData("30S", 30)]     // case-insensitive suffix
-    [InlineData("1800", 1800)]  // bare integer = seconds
-    [InlineData(" 30s ", 30)]   // whitespace is trimmed
+    [TestCase("30s", 30)]
+    [TestCase("0s",  0)]
+    [TestCase("30S", 30)]     // case-insensitive suffix
+    [TestCase("1800", 1800)]  // bare integer = seconds
+    [TestCase(" 30s ", 30)]   // whitespace is trimmed
     public void TryParse_AcceptsSecondForms(string input, long expectedSeconds)
     {
-        Assert.True(DurationParser.TryParse(input, out var d));
-        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), d);
+        Assert.That(DurationParser.TryParse(input, out var d), Is.True);
+        Assert.That(d, Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
     }
 
-    [Theory]
-    [InlineData("5m",  5)]
-    [InlineData("30m", 30)]
-    [InlineData("5M",  5)]
+    [TestCase("5m",  5)]
+    [TestCase("30m", 30)]
+    [TestCase("5M",  5)]
     public void TryParse_AcceptsMinuteForms(string input, long expectedMinutes)
     {
-        Assert.True(DurationParser.TryParse(input, out var d));
-        Assert.Equal(TimeSpan.FromMinutes(expectedMinutes), d);
+        Assert.That(DurationParser.TryParse(input, out var d), Is.True);
+        Assert.That(d, Is.EqualTo(TimeSpan.FromMinutes(expectedMinutes)));
     }
 
-    [Theory]
-    [InlineData("2h", 2)]
-    [InlineData("2H", 2)]
+    [TestCase("2h", 2)]
+    [TestCase("2H", 2)]
     public void TryParse_AcceptsHourForms(string input, long expectedHours)
     {
-        Assert.True(DurationParser.TryParse(input, out var d));
-        Assert.Equal(TimeSpan.FromHours(expectedHours), d);
+        Assert.That(DurationParser.TryParse(input, out var d), Is.True);
+        Assert.That(d, Is.EqualTo(TimeSpan.FromHours(expectedHours)));
     }
 
-    [Theory]
-    [InlineData("1d", 1)]
-    [InlineData("7D", 7)]
+    [TestCase("1d", 1)]
+    [TestCase("7D", 7)]
     public void TryParse_AcceptsDayForms(string input, long expectedDays)
     {
-        Assert.True(DurationParser.TryParse(input, out var d));
-        Assert.Equal(TimeSpan.FromDays(expectedDays), d);
+        Assert.That(DurationParser.TryParse(input, out var d), Is.True);
+        Assert.That(d, Is.EqualTo(TimeSpan.FromDays(expectedDays)));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("abc")]
-    [InlineData("30x")]    // unknown suffix
-    [InlineData("-30s")]   // negative
-    [InlineData("1.5h")]   // decimal not supported
-    [InlineData("m")]      // suffix only, no number
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("   ")]
+    [TestCase("abc")]
+    [TestCase("30x")]    // unknown suffix
+    [TestCase("-30s")]   // negative
+    [TestCase("1.5h")]   // decimal not supported
+    [TestCase("m")]      // suffix only, no number
     public void TryParse_RejectsMalformed(string? input)
     {
-        Assert.False(DurationParser.TryParse(input, out var d));
-        Assert.Equal(TimeSpan.Zero, d);
+        Assert.That(DurationParser.TryParse(input, out var d), Is.False);
+        Assert.That(d, Is.EqualTo(TimeSpan.Zero));
     }
 
-    [Fact]
+    [Test]
     public void Parse_ThrowsOnGarbage()
     {
         Assert.Throws<FormatException>(() => DurationParser.Parse("nope"));
     }
 
-    [Theory]
-    [InlineData(30,        "30s")]
-    [InlineData(60,        "1m")]
-    [InlineData(5 * 60,    "5m")]
-    [InlineData(60 * 60,   "1h")]
-    [InlineData(2 * 3600,  "2h")]
-    [InlineData(24 * 3600, "1d")]
-    [InlineData(90,        "90s")]  // 1m30s → fall back to seconds (not an exact unit)
-    [InlineData(0,         "0s")]
+    [TestCase(30,        "30s")]
+    [TestCase(60,        "1m")]
+    [TestCase(5 * 60,    "5m")]
+    [TestCase(60 * 60,   "1h")]
+    [TestCase(2 * 3600,  "2h")]
+    [TestCase(24 * 3600, "1d")]
+    [TestCase(90,        "90s")]  // 1m30s → fall back to seconds (not an exact unit)
+    [TestCase(0,         "0s")]
     public void Format_RoundTripsAndPicksLargestExactUnit(long seconds, string expected)
     {
-        Assert.Equal(expected, DurationParser.Format(TimeSpan.FromSeconds(seconds)));
+        Assert.That(DurationParser.Format(TimeSpan.FromSeconds(seconds)), Is.EqualTo(expected));
     }
 
-    [Theory]
-    [InlineData(-30,        "-30s")]
-    [InlineData(-5 * 60,    "-5m")]
-    [InlineData(-24 * 3600, "-1d")]
+    [TestCase(-30,        "-30s")]
+    [TestCase(-5 * 60,    "-5m")]
+    [TestCase(-24 * 3600, "-1d")]
     public void Format_NegativeSpansGetLeadingSign(long seconds, string expected)
     {
-        Assert.Equal(expected, DurationParser.Format(TimeSpan.FromSeconds(seconds)));
+        Assert.That(DurationParser.Format(TimeSpan.FromSeconds(seconds)), Is.EqualTo(expected));
     }
 
-    [Fact]
+    [Test]
     public void Format_ExtremeValues_DoNotThrow()
     {
         // TimeSpan.MinValue negates to a value that overflows long ticks;
         // Format must render it rather than throwing OverflowException.
         var min = DurationParser.Format(TimeSpan.MinValue);
-        Assert.StartsWith("-", min);
-        Assert.EndsWith("s", min);
+        Assert.That(min, Does.StartWith("-"));
+        Assert.That(min, Does.EndWith("s"));
 
         var max = DurationParser.Format(TimeSpan.MaxValue);
-        Assert.EndsWith("s", max);
-        Assert.DoesNotContain("-", max);
+        Assert.That(max, Does.EndWith("s"));
+        Assert.That(max, Does.Not.Contain("-"));
     }
 
-    [Fact]
+    [Test]
     public void Format_RoundTripsThroughParse()
     {
         // Property-style: anything Format emits must Parse back to the same span.
@@ -124,9 +117,8 @@ public class DurationParserTests
         foreach (var t in spans)
         {
             var formatted = DurationParser.Format(t);
-            Assert.True(DurationParser.TryParse(formatted, out var parsed),
-                $"could not re-parse '{formatted}'");
-            Assert.Equal(t, parsed);
+            Assert.That(DurationParser.TryParse(formatted, out var parsed), Is.True, $"could not re-parse '{formatted}'");
+            Assert.That(parsed, Is.EqualTo(t));
         }
     }
 }

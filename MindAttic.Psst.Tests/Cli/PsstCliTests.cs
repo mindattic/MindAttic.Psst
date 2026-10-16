@@ -7,13 +7,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
 using MindAttic.Psst.Cli;
-using Xunit;
+using NUnit.Framework;
 
 public class PsstCliTests
 {
     // ---- FormatElapsed: must be culture-invariant ('1.5s', never '1,5s') ----
 
-    [Fact]
+    [Test]
     public void FormatElapsed_SubMinute_UsesInvariantDecimalSeparator()
     {
         var prior = CultureInfo.CurrentCulture;
@@ -21,7 +21,7 @@ public class PsstCliTests
         {
             // de-DE uses ',' as the decimal separator — the regression we guard.
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
-            Assert.Equal("1.5s", PsstCli.FormatElapsed(TimeSpan.FromSeconds(1.5)));
+            Assert.That(PsstCli.FormatElapsed(TimeSpan.FromSeconds(1.5)), Is.EqualTo("1.5s"));
         }
         finally
         {
@@ -29,28 +29,28 @@ public class PsstCliTests
         }
     }
 
-    [Fact]
+    [Test]
     public void FormatElapsed_OverAMinute_RendersMinutesAndSeconds()
     {
-        Assert.Equal("2m05s", PsstCli.FormatElapsed(TimeSpan.FromSeconds(125)));
+        Assert.That(PsstCli.FormatElapsed(TimeSpan.FromSeconds(125)), Is.EqualTo("2m05s"));
     }
 
     // ---- ResolveExecutable: PATH x PATHEXT resolution for .cmd shims ----
 
-    [Fact]
+    [Test]
     public void ResolveExecutable_RootedPath_ReturnedVerbatim()
     {
         var rooted = Path.Combine(Path.GetTempPath(), "whatever.exe");
-        Assert.Equal(rooted, PsstCli.ResolveExecutable(rooted));
+        Assert.That(PsstCli.ResolveExecutable(rooted), Is.EqualTo(rooted));
     }
 
-    [Fact]
+    [Test]
     public void ResolveExecutable_UnknownBareName_ReturnedUnchanged()
     {
-        Assert.Equal("definitely-not-on-path-xyz", PsstCli.ResolveExecutable("definitely-not-on-path-xyz"));
+        Assert.That(PsstCli.ResolveExecutable("definitely-not-on-path-xyz"), Is.EqualTo("definitely-not-on-path-xyz"));
     }
 
-    [Fact]
+    [Test]
     public void ResolveExecutable_BareName_ResolvesToCmdShimViaPathExt()
     {
         // A bare "npm"-style name whose only on-disk form is a .cmd shim must
@@ -69,7 +69,7 @@ public class PsstCliTests
 
             // PATHEXT contributes the extension casing (".CMD"); Windows paths
             // are case-insensitive, so compare accordingly.
-            Assert.Equal(shim, PsstCli.ResolveExecutable("mytool"), ignoreCase: true);
+            Assert.That(PsstCli.ResolveExecutable("mytool"), Is.EqualTo(shim).IgnoreCase);
         }
         finally
         {
@@ -79,7 +79,7 @@ public class PsstCliTests
         }
     }
 
-    [Fact]
+    [Test]
     public void ResolveExecutable_PrefersExeOverCmdWhenBothPresent()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"psst-resolve-{Guid.NewGuid():N}");
@@ -96,7 +96,7 @@ public class PsstCliTests
             Environment.SetEnvironmentVariable("PATHEXT", ".COM;.EXE;.BAT;.CMD");
 
             // .EXE precedes .CMD in PATHEXT, so the exe wins.
-            Assert.Equal(exe, PsstCli.ResolveExecutable("dup"), ignoreCase: true);
+            Assert.That(PsstCli.ResolveExecutable("dup"), Is.EqualTo(exe).IgnoreCase);
         }
         finally
         {
@@ -108,7 +108,7 @@ public class PsstCliTests
 
     // ---- usage text: credential sources must be the real lookup chain ----
 
-    [Fact]
+    [Test]
     public async Task Usage_ListsTheRealCredentialChain_NotUserSecrets()
     {
         var prior = Console.Out;
@@ -116,7 +116,7 @@ public class PsstCliTests
         try
         {
             Console.SetOut(sw);
-            Assert.Equal(0, await new PsstCli().RunAsync(new[] { "--help" }));
+            Assert.That(await new PsstCli().RunAsync(new[] { "--help" }), Is.EqualTo(0));
         }
         finally
         {
@@ -124,11 +124,11 @@ public class PsstCliTests
         }
 
         var text = sw.ToString();
-        Assert.DoesNotContain("User Secrets", text, StringComparison.OrdinalIgnoreCase);
+        Assert.That(text, Does.Not.Contain("User Secrets").IgnoreCase);
         var order = new[] { "vault files", "appsettings.json", @"Psst\settings.json", "env vars" }
             .Select(s => text.IndexOf(s, StringComparison.Ordinal)).ToArray();
-        Assert.All(order, i => Assert.True(i >= 0));
-        Assert.Equal(order.OrderBy(i => i), order); // lowest -> highest precedence, as BuildConfiguration adds them
-        Assert.Contains("MindAttic:Vault:Notifications", text);
+        Assert.That(order, Is.All.GreaterThanOrEqualTo(0));
+        Assert.That(order, Is.EqualTo(order.OrderBy(i => i))); // lowest -> highest precedence, as BuildConfiguration adds them
+        Assert.That(text, Does.Contain("MindAttic:Vault:Notifications"));
     }
 }

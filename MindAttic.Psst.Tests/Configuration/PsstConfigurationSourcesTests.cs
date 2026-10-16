@@ -2,29 +2,29 @@ namespace MindAttic.Psst.Tests.Configuration;
 
 using MindAttic.Psst.Configuration;
 using MindAttic.Vault.Paths;
-using Xunit;
+using NUnit.Framework;
 
 public class PsstConfigurationSourcesTests
 {
-    [Fact]
+    [Test]
     public void GetAppDataDirectory_LandsUnderRoamingMindAtticPsst()
     {
         var path = PsstConfigurationSources.GetAppDataDirectory();
 
-        Assert.EndsWith(Path.Combine("MindAttic", "Psst"), path);
+        Assert.That(path, Does.EndWith(Path.Combine("MindAttic", "Psst")));
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        Assert.StartsWith(appData, path);
+        Assert.That(path, Does.StartWith(appData));
     }
 
-    [Fact]
+    [Test]
     public void GetSettingsPath_IsSettingsJsonUnderAppData()
     {
         var path = PsstConfigurationSources.GetSettingsPath();
-        Assert.EndsWith("settings.json", path);
-        Assert.StartsWith(PsstConfigurationSources.GetAppDataDirectory(), path);
+        Assert.That(path, Does.EndWith("settings.json"));
+        Assert.That(path, Does.StartWith(PsstConfigurationSources.GetAppDataDirectory()));
     }
 
-    [Fact]
+    [Test]
     public void GetAppDataDirectory_RespectsVaultRoamingRootOverride()
     {
         // The Vault test convention: MINDATTIC_VAULT_ROAMING_ROOT redirects
@@ -36,7 +36,7 @@ public class PsstConfigurationSourcesTests
         try
         {
             var path = PsstConfigurationSources.GetAppDataDirectory();
-            Assert.Equal(Path.Combine(tempRoot, "Psst"), path);
+            Assert.That(path, Is.EqualTo(Path.Combine(tempRoot, "Psst")));
         }
         finally
         {

@@ -598,7 +598,7 @@ psst test     # sends a real SMS, check your phone</code></pre>
 dotnet restore MindAttic.Psst.slnx
 dotnet build MindAttic.Psst.slnx --configuration Release --no-restore
 
-# Run the xUnit test suite
+# Run the NUnit test suite
 dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Release --no-build</code></pre>
 <p>GitHub Actions (<a href=".github/workflows/ci.yml">.github/workflows/ci.yml</a>) runs exactly this restore, build, test sequence on <code>windows-latest</code> with .NET 10.0.x for every push and pull request against <code>main</code>, and uploads the <code>.trx</code> test results as a build artifact.</p>
 <p>All projects target <code>net10.0-windows</code>:</p>
@@ -620,7 +620,7 @@ dotnet test MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj --configuration Rel
 <tr>
 <td><code>MindAttic.Psst.Tests</code></td>
 <td>test assembly</td>
-<td>xUnit test suite; see <a href="docs/BIBLE.md#M.PSST-§6">BIBLE section 6</a> for the last verified count.</td>
+<td>NUnit test suite; see <a href="docs/BIBLE.md#M.PSST-§6">BIBLE section 6</a> for the last verified count.</td>
 </tr>
 </tbody></table>
 <p>Versioning is whole-number only (<code>&lt;Version&gt;N.0.0&lt;/Version&gt;</code>, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard <code>dotnet build</code> / <code>dotnet pack</code> flow.</p>
@@ -641,7 +641,7 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 │   ├── PsstCli.cs                     argv parsing, subcommand handlers
 │   ├── Program.cs                     entry point
 │   └── Scheduling/                    ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
-├── MindAttic.Psst.Tests/            # xUnit test project
+├── MindAttic.Psst.Tests/            # NUnit test project
 ├── docs/
 │   ├── BIBLE.md                       L0: architecture, Laws, verified state
 │   ├── AMENDMENTS.md                  L1: pending decisions (normally empty)

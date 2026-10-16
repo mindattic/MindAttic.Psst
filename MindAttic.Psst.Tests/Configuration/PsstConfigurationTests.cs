@@ -2,26 +2,26 @@ namespace MindAttic.Psst.Tests.Configuration;
 
 using Microsoft.Extensions.Configuration;
 using MindAttic.Psst.Configuration;
-using Xunit;
+using NUnit.Framework;
 
 public class PsstConfigurationTests
 {
     private static IConfiguration Build(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
-    [Fact]
+    [Test]
     public void Load_EmptyConfiguration_ReturnsAllNullsAndNoErrors()
     {
         var config = PsstConfiguration.Load(Build(new Dictionary<string, string?>()));
 
-        Assert.Null(config.Email);
-        Assert.Null(config.RecipientPhoneNumber);
-        Assert.Null(config.RecipientEmailSmsAddress);
-        Assert.False(config.HasAnySmsTransport);
-        Assert.Empty(config.Errors);
+        Assert.That(config.Email, Is.Null);
+        Assert.That(config.RecipientPhoneNumber, Is.Null);
+        Assert.That(config.RecipientEmailSmsAddress, Is.Null);
+        Assert.That(config.HasAnySmsTransport, Is.False);
+        Assert.That(config.Errors, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public void Load_FullEmail_PopulatesEmailRecord()
     {
         var config = PsstConfiguration.Load(Build(new()
@@ -34,15 +34,15 @@ public class PsstConfigurationTests
             ["MindAttic:Vault:Notifications:toEmail"]        = "5555550101@vtext.com",
         }));
 
-        Assert.NotNull(config.Email);
-        Assert.Equal("smtp.gmail.com", config.Email!.SmtpHost);
-        Assert.Equal(465, config.Email.SmtpPort);
-        Assert.Equal("5555550101@vtext.com", config.RecipientEmailSmsAddress);
-        Assert.True(config.HasAnySmsTransport);
-        Assert.Empty(config.Errors);
+        Assert.That(config.Email, Is.Not.Null);
+        Assert.That(config.Email!.SmtpHost, Is.EqualTo("smtp.gmail.com"));
+        Assert.That(config.Email.SmtpPort, Is.EqualTo(465));
+        Assert.That(config.RecipientEmailSmsAddress, Is.EqualTo("5555550101@vtext.com"));
+        Assert.That(config.HasAnySmsTransport, Is.True);
+        Assert.That(config.Errors, Is.Empty);
     }
 
-    [Fact]
+    [Test]
     public void Load_EmailMissingPort_DefaultsTo587()
     {
         var config = PsstConfiguration.Load(Build(new()
@@ -53,11 +53,11 @@ public class PsstConfigurationTests
             ["MindAttic:Vault:Notifications:email:from"]     = "u@example.com",
         }));
 
-        Assert.NotNull(config.Email);
-        Assert.Equal(587, config.Email!.SmtpPort);
+        Assert.That(config.Email, Is.Not.Null);
+        Assert.That(config.Email!.SmtpPort, Is.EqualTo(587));
     }
 
-    [Fact]
+    [Test]
     public void Load_EmailUnparseablePort_DefaultsTo587()
     {
         var config = PsstConfiguration.Load(Build(new()
@@ -69,14 +69,13 @@ public class PsstConfigurationTests
             ["MindAttic:Vault:Notifications:email:from"]     = "u@example.com",
         }));
 
-        Assert.NotNull(config.Email);
-        Assert.Equal(587, config.Email!.SmtpPort);
+        Assert.That(config.Email, Is.Not.Null);
+        Assert.That(config.Email!.SmtpPort, Is.EqualTo(587));
     }
 
-    [Theory]
-    [InlineData("0")]        // zero is not a usable TCP port
-    [InlineData("-1")]       // negative
-    [InlineData("70000")]    // above the 65535 ceiling
+    [TestCase("0")]        // zero is not a usable TCP port
+    [TestCase("-1")]       // negative
+    [TestCase("70000")]    // above the 65535 ceiling
     public void Load_EmailOutOfRangePort_DefaultsTo587(string port)
     {
         var config = PsstConfiguration.Load(Build(new()
@@ -88,15 +87,14 @@ public class PsstConfigurationTests
             ["MindAttic:Vault:Notifications:email:from"]     = "u@example.com",
         }));
 
-        Assert.NotNull(config.Email);
-        Assert.Equal(587, config.Email!.SmtpPort);
+        Assert.That(config.Email, Is.Not.Null);
+        Assert.That(config.Email!.SmtpPort, Is.EqualTo(587));
     }
 
-    [Theory]
-    [InlineData("smtpHost")]
-    [InlineData("username")]
-    [InlineData("password")]
-    [InlineData("from")]
+    [TestCase("smtpHost")]
+    [TestCase("username")]
+    [TestCase("password")]
+    [TestCase("from")]
     public void Load_EmailMissingRequiredField_ReturnsNullEmail_AndAddsError(string fieldName)
     {
         var values = new Dictionary<string, string?>
@@ -110,11 +108,11 @@ public class PsstConfigurationTests
 
         var config = PsstConfiguration.Load(Build(values));
 
-        Assert.Null(config.Email);
-        Assert.Contains(config.Errors, e => e.Contains(fieldName));
+        Assert.That(config.Email, Is.Null);
+        Assert.That(config.Errors.Any(e => e.Contains(fieldName)), Is.True);
     }
 
-    [Fact]
+    [Test]
     public void HasAnySmsTransport_TrueWhenEmailConfigured()
     {
         var config = PsstConfiguration.Load(Build(new()
@@ -126,7 +124,7 @@ public class PsstConfigurationTests
             ["MindAttic:Vault:Notifications:toEmail"]        = "5555550101@vtext.com",
         }));
 
-        Assert.True(config.HasAnySmsTransport);
-        Assert.Empty(config.Errors);
+        Assert.That(config.HasAnySmsTransport, Is.True);
+        Assert.That(config.Errors, Is.Empty);
     }
 }

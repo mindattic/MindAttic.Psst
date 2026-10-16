@@ -1,7 +1,7 @@
 namespace MindAttic.Psst.Tests.Contacts;
 
 using MindAttic.Psst.Contacts;
-using Xunit;
+using NUnit.Framework;
 
 /// <summary>
 /// Behavior tests for <see cref="ContactBook"/>. This is the lookup
@@ -14,18 +14,18 @@ public class ContactTests
 {
     private static ContactBook BookOf(params Contact[] contacts) => new(contacts);
 
-    [Fact]
+    [Test]
     public void Find_MatchesNameCaseInsensitively()
     {
         var alice = new Contact("Alice", "5551234567");
         var book = BookOf(alice, new Contact("Bob", "5559876543"));
 
-        Assert.Same(alice, book.Find("alice"));
-        Assert.Same(alice, book.Find("ALICE"));
-        Assert.Same(alice, book.Find("Alice"));
+        Assert.That(book.Find("alice"), Is.SameAs(alice));
+        Assert.That(book.Find("ALICE"), Is.SameAs(alice));
+        Assert.That(book.Find("Alice"), Is.SameAs(alice));
     }
 
-    [Fact]
+    [Test]
     public void Find_PrefersNameMatchOverPhoneMatch()
     {
         // "Bob"'s phone digit-normalizes to the same 10 digits as the name
@@ -38,44 +38,42 @@ public class ContactTests
 
         var found = book.Find("5551234567");
 
-        Assert.Same(alice, found);
+        Assert.That(found, Is.SameAs(alice));
     }
 
-    [Theory]
-    [InlineData("+15551234567")]
-    [InlineData("555-123-4567")]
-    [InlineData("(555) 123-4567")]
-    [InlineData("5551234567")]
-    [InlineData("1-555-123-4567")]
+    [TestCase("+15551234567")]
+    [TestCase("555-123-4567")]
+    [TestCase("(555) 123-4567")]
+    [TestCase("5551234567")]
+    [TestCase("1-555-123-4567")]
     public void Find_FallsBackToPhoneMatchAcrossFormats(string input)
     {
         var contact = new Contact("Alice", "(555) 123-4567");
         var book = BookOf(contact);
 
-        Assert.Same(contact, book.Find(input));
+        Assert.That(book.Find(input), Is.SameAs(contact));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("   ")]
     public void Find_ReturnsNullForBlankInput(string? input)
     {
         var book = BookOf(new Contact("Alice", "5551234567"));
 
-        Assert.Null(book.Find(input!));
+        Assert.That(book.Find(input!), Is.Null);
     }
 
-    [Fact]
+    [Test]
     public void Find_ReturnsNullWhenUnmatched()
     {
         var book = BookOf(new Contact("Alice", "5551234567"));
 
-        Assert.Null(book.Find("Nobody"));
-        Assert.Null(book.Find("555-000-0000"));
+        Assert.That(book.Find("Nobody"), Is.Null);
+        Assert.That(book.Find("555-000-0000"), Is.Null);
     }
 
-    [Fact]
+    [Test]
     public void WithAdded_RejectsBlankName()
     {
         var book = ContactBook.Empty;
@@ -83,7 +81,7 @@ public class ContactTests
         Assert.Throws<ArgumentException>(() => book.WithAdded(new Contact("  ", "5551234567")));
     }
 
-    [Fact]
+    [Test]
     public void WithAdded_RejectsBlankPhone()
     {
         var book = ContactBook.Empty;
@@ -91,7 +89,7 @@ public class ContactTests
         Assert.Throws<ArgumentException>(() => book.WithAdded(new Contact("Alice", " ")));
     }
 
-    [Fact]
+    [Test]
     public void WithAdded_RejectsCaseInsensitiveDuplicateName()
     {
         var book = BookOf(new Contact("Alice", "5551234567"));
@@ -100,18 +98,18 @@ public class ContactTests
             () => book.WithAdded(new Contact("ALICE", "5559876543")));
     }
 
-    [Fact]
+    [Test]
     public void WithAdded_LeavesOriginalBookUnchanged()
     {
         var original = BookOf(new Contact("Alice", "5551234567"));
 
         var updated = original.WithAdded(new Contact("Bob", "5559876543"));
 
-        Assert.Single(original.Contacts);
-        Assert.Equal(2, updated.Contacts.Count);
+        Assert.That(original.Contacts, Has.Exactly(1).Items);
+        Assert.That(updated.Contacts.Count, Is.EqualTo(2));
     }
 
-    [Fact]
+    [Test]
     public void WithoutContact_RemovesOnlyFirstCaseInsensitiveMatch()
     {
         var alice1 = new Contact("Alice", "5551111111");
@@ -121,27 +119,27 @@ public class ContactTests
 
         var updated = book.WithoutContact("ALICE");
 
-        Assert.NotNull(updated);
-        Assert.Equal(new[] { alice2, bob }, updated!.Contacts);
+        Assert.That(updated, Is.Not.Null);
+        Assert.That(updated!.Contacts, Is.EqualTo(new[] { alice2, bob }));
     }
 
-    [Fact]
+    [Test]
     public void WithoutContact_ReturnsNullWhenAbsent()
     {
         var book = BookOf(new Contact("Alice", "5551234567"));
 
-        Assert.Null(book.WithoutContact("Nobody"));
+        Assert.That(book.WithoutContact("Nobody"), Is.Null);
     }
 
-    [Fact]
+    [Test]
     public void WithoutContact_LeavesOriginalBookUnchanged()
     {
         var original = BookOf(new Contact("Alice", "5551234567"), new Contact("Bob", "5559876543"));
 
         var updated = original.WithoutContact("Alice");
 
-        Assert.Equal(2, original.Contacts.Count);
-        Assert.NotNull(updated);
-        Assert.Single(updated!.Contacts);
+        Assert.That(original.Contacts.Count, Is.EqualTo(2));
+        Assert.That(updated, Is.Not.Null);
+        Assert.That(updated!.Contacts, Has.Exactly(1).Items);
     }
 }
