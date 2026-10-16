@@ -11,7 +11,7 @@ updated: 2026-10-03
 # MindAttic.Psst — User Stories
 
 > ✅ done (shipped & tested) · 🟡 partial · ⬜ planned. Every ✅ cites its verifying test.
-> Test tokens are xUnit method names in `MindAttic.Psst.Tests`. See
+> Test tokens are NUnit method names in `MindAttic.Psst.Tests`. See
 > [BIBLE §6](BIBLE.md#M.PSST-§6) for the aggregate build/test evidence.
 
 ## Epic A — Wrap & notify
