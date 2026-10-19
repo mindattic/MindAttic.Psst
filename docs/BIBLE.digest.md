@@ -25,7 +25,7 @@ the instant it lands.
 - **NOT a background daemon or system tray app.** It is a one-shot CLI process. There is no
   resident listener, no port, no service registration.
 - **NOT cross-platform.** It targets `net10.0-windows`; sound playback is gated on Windows and
-  scheduling shells out to `schtasks.exe`. `PsstSoundPlayer` returns `"not windows"` elsewhere.
+  scheduling goes through MindAttic.WatchDog (`watchdog job`), which wraps Windows Task Scheduler. `PsstSoundPlayer` returns `"not windows"` elsewhere.
 - **NOT a general messaging/chat platform.** It sends short one-way notifications, not
   conversations. No inbound handling.
 - **NOT a multi-transport fan-out at send time.** A single send picks exactly one transport
@@ -75,14 +75,14 @@ implicit-`--schedule now` branch is suppressed when running as a scheduler child
 (`PsstCli.ParseSmsFlags`, `IsFromScheduler`.)
 
 ### M.PSST-LAW-6 — Self-cleaning scheduled tasks {#M.PSST-LAW-6}
-A successful scheduled send leaves nothing pending: the launcher `.cmd` deletes its own
-Task Scheduler entry and JSON sidecar after firing (rather than relying on `schtasks /Z`).
+A successful scheduled send leaves nothing pending: the launcher `.cmd` cancels its own
+WatchDog job (`watchdog job cancel`) and deletes its JSON sidecar after firing.
 (`ScheduledTaskRegistrar`, README "How `--schedule` is implemented".)
 
 ### M.PSST-LAW-7 — Machine-facing values are culture-invariant {#M.PSST-LAW-7}
-Values that cross a process or OS boundary (elapsed time in the SMS body, the `schtasks /ST`
+Values that cross a process or OS boundary (elapsed time in the SMS body, the WatchDog `--at`
 time/date) are formatted with `CultureInfo.InvariantCulture`, so a comma-decimal locale can't
-emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
+emit "1,5s" or a date WatchDog misreads. (`PsstCli.FormatElapsed`.)
 
 ## 9. Glossary {#M.PSST-§9}
 
@@ -96,7 +96,7 @@ emit "1,5s" or a non-en-US date schtasks rejects. (`PsstCli.FormatElapsed`.)
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
 - **Sidecar** — the JSON metadata file written next to a scheduled launcher `.cmd` so
   `psst scheduled` can render a meaningful listing.
-- **Launcher** — the self-deleting `.cmd` Task Scheduler runs to perform a deferred send
+- **Launcher** — the self-cancelling `.cmd` a WatchDog job runs to perform a deferred send
   ([M.PSST-LAW-6](#M.PSST-LAW-6)).
 - **Vault chain** — the `MindAttic.Vault` `IConfiguration` source order (vault files →
   appsettings → `%APPDATA%` settings.json → env vars) credentials resolve through.

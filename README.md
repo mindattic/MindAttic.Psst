@@ -30,7 +30,7 @@ The output shape above comes straight from the CLI's format strings (`PsstCli.Wr
 - Ctrl-C still notifies: Psst suppresses the default terminate-immediately handler just long enough to report once the cancelled child exits.
 - Sound and text in parallel: the local clip and the SMS dispatch run concurrently, so neither delays the other. Sound failure never fails the notification.
 - One-off texts with `psst sms`, addressed by contact name or a bare US number. Unknown names and malformed numbers are hard errors; Psst never guesses.
-- Repeat and schedule: drip a message N times at an interval, defer it to a wall-clock time through Windows Task Scheduler, or both. Scheduled tasks clean up after themselves.
+- Repeat and schedule: drip a message N times at an interval, defer it to a wall-clock time through a [MindAttic.WatchDog](../MindAttic.WatchDog/README.md) job, or both. Scheduled sends clean up after themselves.
 - A small local contact book (`psst contacts`) with crash-safe writes.
 - `psst ping` diagnoses configuration without sending anything; `psst sound` checks audio on its own.
 
@@ -172,7 +172,7 @@ Inspect and cancel deferred `sms` sends registered via `--schedule`/`--start` (d
 
 | Command | Effect |
 |---|---|
-| `psst scheduled` or `psst scheduled list` (alias `ls`) | List every pending Psst Task Scheduler entry: next fire time, task name, recipient, message preview, and repeat/interval if any. |
+| `psst scheduled` or `psst scheduled list` (alias `ls`) | List every pending Psst job WatchDog holds: next fire time, task name, recipient, message preview, and repeat/interval if any. |
 | `psst scheduled cancel <task-name>` (aliases `rm`, `delete`, `del`) | Delete one task plus its launcher `.cmd` and its JSON sidecar. |
 | `psst scheduled clear` | Cancel every pending Psst task in one pass, reporting per-task success or failure. |
 
@@ -186,7 +186,7 @@ The `sms` subcommand accepts three optional flags that let you drip a message at
 |---|---|---|---|
 | `--repeat` | none | positive integer | Send the message N times total. Default `1`. |
 | `--interval` | `--every` | duration | Delay between repeats. Required whenever `--repeat` is greater than 1. |
-| `--schedule` | `--start` | time of day | Defer the first send to local wall-clock time T (next occurrence) via Windows Task Scheduler. |
+| `--schedule` | `--start` | time of day | Defer the first send to local wall-clock time T (next occurrence) via a WatchDog job. |
 
 ### Duration format
 
@@ -231,9 +231,9 @@ psst sms jordan "standup" --start 9:00am --repeat 5 --every 1m
 
 ### Implicit schedule now
 
-Whenever you pass `--interval` (or `--every`) without an explicit `--schedule` / `--start`, Psst infers `--schedule now`. "Now" rounds up to the next whole-minute boundary, because `schtasks /ST` only supports minute precision; a small cushion is added when you are within 5 seconds of the boundary so the registration does not race the trigger.
+Whenever you pass `--interval` (or `--every`) without an explicit `--schedule` / `--start`, Psst infers `--schedule now`. "Now" rounds up to the next whole-minute boundary, because scheduled sends fire on whole minutes; a small cushion is added when you are within 5 seconds of the boundary so the registration does not race the trigger.
 
-The practical effect: a long drip loop hands itself off to Windows Task Scheduler instead of blocking your shell. You get your prompt back immediately, and the loop runs in a detached `psst.exe` child process spawned by Task Scheduler.
+The practical effect: a long drip loop hands itself off to a WatchDog job instead of blocking your shell. You get your prompt back immediately, and the loop runs in a detached, windowless `psst.exe` child process the job starts.
 
 ```powershell
 # These two are equivalent.
@@ -246,23 +246,25 @@ psst sms jordan "ping" --repeat 12 --every 5m --schedule now   # (illustrative)
 Under the hood, `--schedule` (and its alias `--start`):
 
 1. Resolves the time to a concrete local `DateTime` using next-occurrence semantics.
-2. Writes a small launcher `.cmd` file to `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that invokes `psst.exe sms …` with the original argv minus `--schedule` (so the deferred run does not re-schedule itself), keeps `--repeat`/`--interval`, and sets `PSST_FROM_SCHEDULE=1` so the deferred fire runs the send path. It then runs `schtasks /Delete /TN <task-name> /F` and removes the JSON sidecar, so successful runs leave nothing pending behind.
+2. Writes a small launcher `.cmd` file to `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that invokes `psst.exe sms …` with the original argv minus `--schedule` (so the deferred run does not re-schedule itself), keeps `--repeat`/`--interval`, and sets `PSST_FROM_SCHEDULE=1` so the deferred fire runs the send path. It then runs `watchdog job cancel <id> --owner Psst` and removes the JSON sidecar, so successful runs leave nothing pending behind.
 3. Writes a JSON sidecar `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.json` with the recipient, message, repeat and interval values, used by `psst scheduled` to render a meaningful listing.
-4. Calls `schtasks.exe /Create /SC ONCE /TN MindAttic\Psst\MindAttic.Psst.<id> /TR <launcher> /SD <date> /ST <time> /F` — every MindAttic scheduled task lives under `\MindAttic\<Project>\` rather than the Task Scheduler root.
+4. Calls `watchdog job add <id> --owner Psst --at <time> --run "cmd.exe /c <launcher>"`. Psst never registers a task itself: [HOUSE-LAW-11](../MindAttic.HouseRules.md#HOUSE-LAW-11) makes MindAttic.WatchDog the only thing that does, so the job lands at `\MindAttic\WatchDog\Psst\<id>` and runs headless (no console window, no stolen focus).
 
-`schtasks /Z` (auto-delete after run) is intentionally not used: it requires an `EndBoundary` that Windows does not synthesize from a bare `/SC ONCE`. The launcher self-deletes instead, with the same effect and no edge cases.
+Psst finds WatchDog's `watchdog.ps1` through the `MINDATTIC_WATCHDOG` environment variable (the script or its folder) if set, else in a `MindAttic.WatchDog` folder beside one of psst's parent folders (the workspace layout), else on `PATH`.
+
+Reminders scheduled by an older Psst (registered by Psst itself at `\MindAttic\Psst\MindAttic.Psst.<id>`) are moved on the first run after upgrading: each one still due is re-created through `watchdog job add --replaces`, which removes the old task, and its launcher is rewritten to cancel its WatchDog job. A marker file `scheduled\.moved-to-watchdog` records that the move is done; if WatchDog can't be reached, the move is retried next run.
 
 ### Inspecting and cancelling scheduled sends
 
-Listing reads the actual Task Scheduler state (via `schtasks /Query /FO CSV /V`) and enriches each row with the JSON sidecar, so the table shows recipient, message preview, and repeat/interval at a glance.
+Listing reads WatchDog's job list (`watchdog job list --owner Psst --json`) and enriches each row with the JSON sidecar, so the table shows recipient, message preview, and repeat/interval at a glance.
 
 ```powershell
 PS> psst scheduled
 Pending Psst tasks (2):
 
-  ⏰ 2026-05-22 12:53   MindAttic\Psst\MindAttic.Psst.82894a30e2ad
+  ⏰ 2026-05-22 12:53   \MindAttic\WatchDog\Psst\82894a30e2ad
      → jordan (5555550123): "deploy finished"
-  ⏰ 2026-05-23 09:00   MindAttic\Psst\MindAttic.Psst.f73f70ff1e97
+  ⏰ 2026-05-23 09:00   \MindAttic\WatchDog\Psst\f73f70ff1e97
      → jordan (5555550123): "standup reminder"
      ↻ 5 sends every 1m
 
@@ -270,14 +272,11 @@ Cancel one:  psst scheduled cancel <task-name>
 Cancel all:  psst scheduled clear
 ```
 
-If you prefer the raw Windows tools, both still work:
+`psst scheduled cancel` takes the task name as listed or just its id (`82894a30e2ad`). WatchDog's own commands work too:
 
 ```powershell
-Get-ScheduledTask -TaskPath '\MindAttic\Psst\' | Format-Table TaskName, State, `
-    @{N='NextRun';E={(Get-ScheduledTaskInfo $_).NextRunTime}}
-
-schtasks /Query /TN MindAttic\Psst\MindAttic.Psst.*    # tab-complete task name first
-schtasks /Delete /TN <task-name> /F     # cancel one
+watchdog job list --owner Psst
+watchdog job cancel <id> --owner Psst    # leaves the launcher and sidecar files behind
 ```
 
 ## How it works
@@ -447,7 +446,7 @@ All projects target `net10.0-windows`:
 | Project | Output | Role |
 |---|---|---|
 | `MindAttic.Psst` | `MindAttic.Psst` library / NuGet package, version 1.0.0 | Notifier, transports, sound, configuration, contacts, duration and time parsing. Depends on NAudio, MailKit and MindAttic.Vault. |
-| `MindAttic.Psst.Cli` | `psst.exe` (`AssemblyName=psst`) | Argument parsing, subcommand dispatch, Windows Task Scheduler integration. |
+| `MindAttic.Psst.Cli` | `psst.exe` (`AssemblyName=psst`) | Argument parsing, subcommand dispatch, scheduled sends through MindAttic.WatchDog. |
 | `MindAttic.Psst.Tests` | test assembly | NUnit test suite; see [BIBLE section 6](docs/BIBLE.md#M.PSST-§6) for the last verified count. |
 
 Versioning is whole-number only (`<Version>N.0.0</Version>`, bumped by major version alone, per HOUSE-LAW-1). There is no separate publish or pack script beyond the standard `dotnet build` / `dotnet pack` flow.
@@ -474,7 +473,7 @@ MindAttic.Psst/
 ├── MindAttic.Psst.Cli/              # psst.exe front door (net10.0-windows)
 │   ├── PsstCli.cs                     argv parsing, subcommand handlers
 │   ├── Program.cs                     entry point
-│   └── Scheduling/                    ScheduledTaskRegistrar, ScheduledTaskLister (schtasks.exe)
+│   └── Scheduling/                    ScheduledTaskRegistrar, ScheduledTaskLister, LegacyTaskMigration, WatchDogClient (watchdog job)
 ├── MindAttic.Psst.Tests/            # NUnit test project
 ├── docs/
 │   ├── BIBLE.md                       L0: architecture, Laws, verified state
@@ -505,7 +504,7 @@ Because Psst sends SMS, the repo ships the plain static pages carriers and SMS-r
 - Fanout: sending one email-to-SMS message to every known US carrier gateway for a number, since the carrier is unknown.
 - Carrier gateway: a per-carrier email domain (for example `vtext.com`) that delivers email as SMS.
 - Sidecar: the JSON metadata file written next to a scheduled launcher `.cmd` so `psst scheduled` can render a meaningful listing.
-- Launcher: the self-deleting `.cmd` Task Scheduler runs to perform a deferred send.
+- Launcher: the self-cancelling `.cmd` a WatchDog job runs to perform a deferred send.
 - Vault chain: the MindAttic.Vault `IConfiguration` source order (vault files, appsettings, `%APPDATA%` settings.json, environment variables) that credentials resolve through.
 - `PSST_FROM_SCHEDULE`: environment marker set by the launcher so a deferred send does not re-schedule itself.
 - `PSST_VIA`: environment variable that overrides transport selection for one send.

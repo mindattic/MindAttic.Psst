@@ -1,33 +1,31 @@
 namespace MindAttic.Psst.Cli.Scheduling;
 
 using System;
-using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 /// <summary>
-/// Registers a one-shot Windows Task Scheduler entry that fires
-/// <c>psst.exe</c> at a specific local time. Used to back the
-/// <c>--schedule</c> / <c>--start</c> CLI flag.
+/// Registers a one-shot scheduled job that fires <c>psst.exe</c> at a
+/// specific local time. Used to back the <c>--schedule</c> / <c>--start</c>
+/// CLI flag. The job itself is made by MindAttic.WatchDog
+/// (<see cref="WatchDogClient"/>), never by Psst calling schtasks.
 ///
 /// <para>
-/// Implementation note: rather than wrestle with <c>schtasks /TR</c> and
-/// the Windows command-line escaping rules for embedded quotes, the
+/// Implementation note: rather than round-trip the message text through
+/// another command line's escaping rules for embedded quotes, the
 /// registrar writes a small companion <c>.cmd</c> launcher to
 /// <c>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.cmd</c> and
 /// schedules <em>that file</em>. The launcher invokes
 /// <c>psst.exe</c> with the exact argv it received, so we never round-trip
-/// the message text through schtasks' fragile quoting layer.
+/// the message text through the scheduler's fragile command-line quoting layer.
 /// </para>
 ///
 /// <para>
-/// The scheduled task itself is registered with <c>/SC ONCE … /Z</c>, which
-/// asks the scheduler to delete the task after it runs. The launcher
-/// <c>.cmd</c> stays behind on disk; it's a few hundred bytes, and leaving
-/// it provides a paper trail for users who want to inspect what was
+/// The launcher cancels its own WatchDog job once the send is done. The
+/// launcher <c>.cmd</c> stays behind on disk; it's a few hundred bytes, and
+/// leaving it provides a paper trail for users who want to inspect what was
 /// scheduled.
 /// </para>
 /// </summary>
@@ -95,14 +93,17 @@ public static class ScheduledTaskRegistrar
         if (fireTime <= DateTime.Now)
             return new RegistrationResult(false, "", "", fireTime, $"fire time {fireTime:yyyy-MM-dd HH:mm} is not in the future");
 
-        // Unique-ish task and launcher names. The hex slice keeps the task
-        // name short enough to fit comfortably in Task Scheduler's UI. Every
-        // MindAttic scheduled task lives under \MindAttic\<Project>\ rather
-        // than the Task Scheduler root, so it's all visible in one place.
+        // Unique-ish job and launcher names. The hex slice keeps the task
+        // name short enough to fit comfortably in Task Scheduler's UI.
+        // WatchDog files the job at \MindAttic\WatchDog\Psst\<id>.
         var id = Guid.NewGuid().ToString("N")[..12];
-        var taskName = $@"MindAttic\Psst\MindAttic.Psst.{id}";
+        var taskName = WatchDogClient.TaskFolder + id;
 
-        var launcherPath = await WriteLauncherCmdAsync(id, taskName, psstExePath, psstArgs);
+        string cancelLine;
+        try { cancelLine = WatchDogClient.CancelCommandLine(id); }
+        catch (FileNotFoundException ex) { return new RegistrationResult(false, taskName, "", fireTime, ex.Message); }
+
+        var launcherPath = await WriteLauncherCmdAsync(id, cancelLine, psstExePath, psstArgs);
 
         // Optional sidecar JSON. Only written when the caller supplies
         // metadata — we don't synthesize one from psstArgs so the
@@ -110,9 +111,9 @@ public static class ScheduledTaskRegistrar
         if (metadata is not null)
             await WriteSidecarAsync(id, taskName, fireTime, launcherPath, metadata);
 
-        var registerError = RegisterWithSchtasks(taskName, launcherPath, fireTime);
-        if (registerError is not null)
-            return new RegistrationResult(false, taskName, launcherPath, fireTime, registerError);
+        var added = await WatchDogClient.AddAsync(id, fireTime, launcherPath);
+        if (!added.Success)
+            return new RegistrationResult(false, taskName, launcherPath, fireTime, $"watchdog job add failed: {added.Error}");
 
         return new RegistrationResult(true, taskName, launcherPath, fireTime, null);
     }
@@ -128,21 +129,19 @@ public static class ScheduledTaskRegistrar
 
     /// <summary>
     /// Materialize the launcher <c>.cmd</c> file. The file invokes
-    /// <c>psst.exe</c> with the original argv, then deletes the
-    /// scheduled task itself and the JSON sidecar so the system doesn't
+    /// <c>psst.exe</c> with the original argv, then cancels its own
+    /// WatchDog job and deletes the JSON sidecar so the system doesn't
     /// accumulate stale entries.
     ///
     /// <para>
-    /// Self-deletion is done from inside the launcher (rather than via
-    /// <c>schtasks /Z</c>) because <c>/Z</c> requires an <c>EndBoundary</c>
-    /// that Windows doesn't synthesize from a bare <c>/SC ONCE /ST</c>.
-    /// Doing the cleanup here keeps the registration call minimal and
-    /// guarantees the cleanup actually runs.
+    /// WatchDog keeps a one-shot job registered after it runs until its
+    /// owner cancels it, so the launcher does that as its last step;
+    /// cancelling never stops the run under way.
     /// </para>
     /// </summary>
     private static async Task<string> WriteLauncherCmdAsync(
         string id,
-        string taskName,
+        string cancelLine,
         string psstExePath,
         string[] psstArgs)
     {
@@ -171,10 +170,10 @@ public static class ScheduledTaskRegistrar
         // Run psst with the original argv.
         sb.AppendLine(BuildInvocationLine(psstExePath, psstArgs));
         sb.AppendLine("set PSST_EXIT=%ERRORLEVEL%");
-        // Self-cleanup: delete the scheduled task and the JSON sidecar.
+        // Self-cleanup: cancel the WatchDog job and delete the JSON sidecar.
         // Errors are swallowed — the cleanup is best-effort and we don't
         // want a missing file to mask the psst exit code.
-        sb.AppendLine($"schtasks /Delete /TN \"{taskName}\" /F >nul 2>nul");
+        sb.AppendLine(SelfCancelLine(cancelLine));
         sb.AppendLine($"del /Q \"{sidecarPath}\" >nul 2>nul");
         sb.AppendLine("exit /b %PSST_EXIT%");
 
@@ -215,62 +214,12 @@ public static class ScheduledTaskRegistrar
     }
 
     /// <summary>
-    /// Shell out to <c>schtasks.exe /Create … /SC ONCE … /Z</c>. Using
-    /// <see cref="ProcessStartInfo.ArgumentList"/> hands each argument to
-    /// schtasks as a discrete string, sidestepping the manual /command-line
-    /// quoting pitfalls that plague every other tutorial on this topic.
-    /// Returns <c>null</c> on success or an error string on failure.
+    /// The launcher line that cancels its own job: the WatchDog call with
+    /// output silenced and every <c>%</c> doubled so a path holding one
+    /// survives cmd's batch percent-expansion.
     /// </summary>
-    private static string? RegisterWithSchtasks(string taskName, string launcherPath, DateTime fireTime)
-    {
-        var psi = new ProcessStartInfo("schtasks.exe")
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("/Create");
-        psi.ArgumentList.Add("/TN"); psi.ArgumentList.Add(taskName);
-        psi.ArgumentList.Add("/SC"); psi.ArgumentList.Add("ONCE");
-        // schtasks parses /SD using the *current user's* Windows short-date
-        // pattern, not en-US. Hard-coding MM/dd/yyyy worked on US machines
-        // and silently failed (or fired on the wrong day) under dd/MM/yyyy
-        // or yyyy-MM-dd locales. Read the actual pattern out of CultureInfo
-        // and let DateTime.ToString render it.
-        var datePattern = CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern;
-        psi.ArgumentList.Add("/SD"); psi.ArgumentList.Add(fireTime.ToString(datePattern, CultureInfo.CurrentCulture));
-        psi.ArgumentList.Add("/ST"); psi.ArgumentList.Add(fireTime.ToString("HH:mm", CultureInfo.InvariantCulture));
-        psi.ArgumentList.Add("/TR"); psi.ArgumentList.Add(launcherPath);
-        psi.ArgumentList.Add("/F"); // overwrite if a stale task with the same name exists
-        // Note: /Z (auto-delete after run) is intentionally omitted because
-        // schtasks rejects it without an explicit /ED EndBoundary on
-        // one-shot tasks. The launcher .cmd self-deletes the task and
-        // sidecar after firing, achieving the same effect.
-
-        try
-        {
-            using var proc = Process.Start(psi);
-            if (proc is null) return "failed to launch schtasks.exe";
-            // Drain both streams concurrently to avoid the classic
-            // pipe-buffer deadlock when stderr fills before stdout drains.
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-            var stderrTask = proc.StandardError.ReadToEndAsync();
-            proc.WaitForExit();
-            var stdout = stdoutTask.GetAwaiter().GetResult();
-            var stderr = stderrTask.GetAwaiter().GetResult();
-            if (proc.ExitCode != 0)
-            {
-                var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-                return $"schtasks exited {proc.ExitCode}: {detail.Trim()}";
-            }
-            return null;
-        }
-        catch (Exception ex)
-        {
-            return $"could not invoke schtasks.exe: {ex.Message}";
-        }
-    }
+    internal static string SelfCancelLine(string cancelLine) =>
+        cancelLine.Replace("%", "%%") + " >nul 2>nul";
 
     /// <summary>
     /// Build the line that invokes <c>psst.exe</c> inside the launcher

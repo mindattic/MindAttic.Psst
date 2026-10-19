@@ -76,6 +76,10 @@ public sealed class PsstCli
         var configuration = BuildConfiguration();
         var psstConfig = PsstConfiguration.Load(configuration);
 
+        // First run after scheduling moved to WatchDog: re-create any reminder
+        // Psst registered itself, then never again (a marker file says so).
+        await LegacyTaskMigration.RunOnceAsync();
+
         try
         {
             return args[0].ToLowerInvariant() switch
@@ -623,8 +627,8 @@ public sealed class PsstCli
     /// Convenience rule: if <c>--interval</c> / <c>--every</c> is present
     /// but <c>--schedule</c> / <c>--start</c> is not, the parser fills in
     /// an implicit "schedule for now" — specifically the next whole-minute
-    /// boundary (Task Scheduler's <c>/ST</c> only accepts minute
-    /// precision). This makes a drip loop detach into a scheduled task
+    /// boundary (reminders fire on whole minutes, as Task Scheduler's
+    /// /ST always required). This makes a drip loop detach into a scheduled task
     /// instead of blocking the originating shell process.
     /// </para>
     /// </summary>
@@ -728,8 +732,8 @@ public sealed class PsstCli
             StringComparison.Ordinal);
 
     /// <summary>
-    /// Earliest fire-time we can hand to <c>schtasks /ST</c>, which only
-    /// supports minute precision. Returns the next whole-minute boundary
+    /// Earliest fire-time for a scheduled send, which fires on whole minutes
+    /// (the precision Task Scheduler's /ST had). Returns the next whole-minute boundary
     /// strictly after <paramref name="now"/>, with a one-minute cushion
     /// when we're within 5 seconds of the boundary so the registration
     /// call doesn't race the trigger.
@@ -809,23 +813,23 @@ public sealed class PsstCli
     }
 
     /// <summary>Cancel a single task by name.</summary>
-    private static Task<int> ScheduledCancelAsync(string[] args)
+    private static async Task<int> ScheduledCancelAsync(string[] args)
     {
         if (args.Length != 1)
         {
             Console.Error.WriteLine("usage: psst scheduled cancel <task-name>");
             Console.Error.WriteLine("       (run `psst scheduled` to see task names)");
-            return Task.FromResult(1);
+            return 1;
         }
         var taskName = args[0];
-        var error = ScheduledTaskLister.Cancel(taskName);
+        var error = await ScheduledTaskLister.CancelAsync(taskName);
         if (error is not null)
         {
             Console.Error.WriteLine($"error: {error}");
-            return Task.FromResult(1);
+            return 1;
         }
         Console.WriteLine($"cancelled '{taskName}'");
-        return Task.FromResult(0);
+        return 0;
     }
 
     /// <summary>
@@ -843,7 +847,7 @@ public sealed class PsstCli
         var failures = 0;
         foreach (var t in pending)
         {
-            var err = ScheduledTaskLister.Cancel(t.TaskName);
+            var err = await ScheduledTaskLister.CancelAsync(t.TaskName);
             if (err is null)
             {
                 Console.WriteLine($"  ✓ cancelled {t.TaskName}");
@@ -997,7 +1001,7 @@ public sealed class PsstCli
     // Invariant culture so the elapsed time reads "1.5s" everywhere — without
     // it, machines whose culture uses a comma decimal separator emit "1,5s"
     // into the notification (the rest of the CLI already formats machine-facing
-    // values invariantly, e.g. the schtasks /ST time).
+    // values invariantly, e.g. the WatchDog --at time).
     internal static string FormatElapsed(TimeSpan t) =>
         t.TotalMinutes >= 1
             ? string.Create(CultureInfo.InvariantCulture, $"{(int)t.TotalMinutes}m{t.Seconds:00}s")
