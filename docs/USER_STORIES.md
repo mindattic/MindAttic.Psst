@@ -6,7 +6,7 @@ layer: stories
 status: living
 updated: 2026-10-03
 ---
-<!-- GENERATED from MindAttic.Workflow/data/workflow.db by `workflow db render`. Do not edit: this file is rewritten from the database; change stories and tickets with the workflow CLI. -->
+<!-- GENERATED from MindAttic.Tickets/data/Tickets.db by `tickets db render`. Do not edit: this file is rewritten from the database; change stories and tickets with the tickets CLI. -->
 
 # MindAttic.Psst — User Stories
 
@@ -150,3 +150,7 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 | M.PSST-T16 | 2026-10-16 | docs | open | Bring README.md up to date with the code as it is now (what it is, setup, usage, commands, current state), following codex-standard/README-STYLE.md; README.htm regenerated if the repo has one | user request 2026-10-16: approved repo sweep |
 | M.PSST-T17 | 2026-10-16 | feature | open | Log to MindAttic.Log (3.0.0): every app/CLI entry point writes to the standalone MindAttic.Log.db Vault assigns this app (VaultPaths.LoggingDbPath, MindAttic.Vault 6.0.0) through Serilog's WriteToMindAtticLog, tagged with its Component; log startup, user actions that change data, failures and unhandled exceptions (UI thread, AppDomain, unobserved tasks); tests point the log at a temp file. Pattern: MindAttic.Workflow WorkflowLog (M.FLOW-T92), MindAttic.Orchestrator OrchestratorLog | M.FLOW-T92 |
 | M.PSST-T18 | 2026-10-16 | docs | closed | Update USER_STORIES.md | — |
+| M.PSST-T19 | 2026-10-18 | chore | wont-do | Move per-reminder task registration (Cli/Scheduling ScheduledTaskRegistrar/Lister) onto WatchDog's API, or record Psst's exemption, per the WatchDog decision (job now in MindAttic.WatchDog M.WD-T10) | replaced by M.PSST-T20 |
+| M.PSST-T20 | 2026-10-18 | feature | closed | Schedule and cancel reminders through WatchDog's job API (M.WD-T12) instead of calling schtasks directly: ScheduledTaskRegistrar/ScheduledTaskLister call watchdog job add/cancel/list --owner Psst; on first run, re-create existing reminder tasks through WatchDog and remove the old ones. Supersedes M.PSST-T19 | MindAttic.Psst.Tests/Cli/WatchDogSchedulingTests.cs (0a97300) |
+| M.PSST-T21 | 2026-10-19 | chore | open | Convert tracked source files to LF line endings via .gitattributes, per HOUSE-LAW-13 (low priority) | — |
+| M.PSST-T22 | 2026-10-20 | docs | open | Publish MindAttic.Psst docs to GitHub Pages via the shared Toolkit DocFX pipeline: run adopt-docs-site.ps1 (README.md as home page, docs/*.md as articles, API reference only where the code builds in CI), enable Pages with build_type=workflow, set the repo homepage URL, retire tools/build-readme.ps1 and README.htm, confirm the docs Actions run is green and https://mindattic.github.io/MindAttic.Psst/ returns 200. Depends on MAT-T8. | — |
