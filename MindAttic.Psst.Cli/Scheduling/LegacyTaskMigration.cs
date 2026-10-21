@@ -13,9 +13,9 @@ using System.Threading.Tasks;
 /// registration. Those were registered by Psst itself at
 /// <c>\MindAttic\Psst\MindAttic.Psst.&lt;id&gt;</c> and their launchers delete
 /// themselves with <c>schtasks</c>. On the first run after the switch, each
-/// one still due is re-created through <c>watchdog job add --replaces</c>
+/// one still due is re-created through <c>scheduler job add --replaces</c>
 /// (which removes the old task, and its folder once empty) with its launcher
-/// rewritten to cancel its WatchDog job instead. A marker file records that
+/// rewritten to cancel its Scheduler job instead. A marker file records that
 /// the move is done, so later runs skip it.
 /// </summary>
 public static class LegacyTaskMigration
@@ -67,13 +67,13 @@ public static class LegacyTaskMigration
             try
             {
                 await RewriteLauncherAsync(launcherPath, id);
-                var added = await WatchDogClient.AddAsync(id, fireTime, launcherPath, replaces: LegacyTaskPrefix + id);
+                var added = await SchedulerClient.AddAsync(id, fireTime, launcherPath, replaces: LegacyTaskPrefix + id);
                 if (!added.Success)
                 {
                     failures.Add($"{id} ({added.Error})");
                     continue;
                 }
-                await RewriteSidecarTaskNameAsync(sidecar, WatchDogClient.TaskFolder + id);
+                await RewriteSidecarTaskNameAsync(sidecar, SchedulerClient.TaskFolder + id);
             }
             catch (Exception ex)
             {
@@ -112,11 +112,11 @@ public static class LegacyTaskMigration
 
     /// <summary>
     /// Swap the launcher's <c>schtasks /Delete</c> self-cleanup line for the
-    /// WatchDog cancel of its new job; every other line stays as it was.
+    /// Scheduler cancel of its new job; every other line stays as it was.
     /// </summary>
     internal static async Task RewriteLauncherAsync(string launcherPath, string id)
     {
-        var cancel = ScheduledTaskRegistrar.SelfCancelLine(WatchDogClient.CancelCommandLine(id));
+        var cancel = ScheduledTaskRegistrar.SelfCancelLine(SchedulerClient.CancelCommandLine(id));
         var lines = (await File.ReadAllLinesAsync(launcherPath))
             .Select(l => l.TrimStart().StartsWith("schtasks /Delete", StringComparison.OrdinalIgnoreCase) ? cancel : l);
         await File.WriteAllTextAsync(launcherPath, string.Join("\r\n", lines) + "\r\n", Encoding.UTF8);

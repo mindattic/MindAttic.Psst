@@ -10,13 +10,13 @@ using System.Threading.Tasks;
 
 /// <summary>
 /// Read-side counterpart to <see cref="ScheduledTaskRegistrar"/>. Lists
-/// pending <c>\MindAttic\WatchDog\Psst\*</c> jobs through WatchDog
-/// (<c>watchdog job list --owner Psst</c>), enriches each one with the
+/// pending <c>\MindAttic\Scheduler\Psst\*</c> jobs through Scheduler
+/// (<c>scheduler job list --owner Psst</c>), enriches each one with the
 /// launcher's JSON sidecar (recipient, message, repeat, interval) when
 /// available, and supports cancellation by task name.
 ///
 /// <para>
-/// Source of truth is WatchDog's job list — the sidecar JSON files are only
+/// Source of truth is Scheduler's job list — the sidecar JSON files are only
 /// used to add the human-readable metadata. A job whose launcher already
 /// fired cancels itself, so it simply will not appear, even if its sidecar
 /// file is still on disk.
@@ -33,18 +33,18 @@ public static class ScheduledTaskLister
         DateTime? FireTimeFromSidecar);
 
     /// <summary>
-    /// Enumerate every Psst job WatchDog holds, in ascending NextRunTime order.
+    /// Enumerate every Psst job Scheduler holds, in ascending NextRunTime order.
     /// </summary>
     public static async Task<IReadOnlyList<PendingTask>> ListAsync()
     {
-        var jobs = await WatchDogClient.ListAsync();
+        var jobs = await SchedulerClient.ListAsync();
         var dir = ScheduledTaskRegistrar.ScheduledDirectory();
         var results = new List<PendingTask>(capacity: jobs.Count);
 
         foreach (var job in jobs)
         {
             var (meta, fireTime) = TryReadSidecar(Path.Combine(dir, $"{job.Name}.json"));
-            var taskName = string.IsNullOrEmpty(job.Task) ? WatchDogClient.TaskFolder + job.Name : job.Task;
+            var taskName = string.IsNullOrEmpty(job.Task) ? SchedulerClient.TaskFolder + job.Name : job.Task;
             results.Add(new PendingTask(taskName, job.NextRun, job.Command, meta, fireTime));
         }
 
@@ -55,7 +55,7 @@ public static class ScheduledTaskLister
 
     /// <summary>
     /// Cancel a pending job by task name (as <c>psst scheduled</c> prints it)
-    /// or by its bare id, through <c>watchdog job cancel</c>, and remove the
+    /// or by its bare id, through <c>scheduler job cancel</c>, and remove the
     /// corresponding launcher <c>.cmd</c> and JSON sidecar (if present) so
     /// the scheduled folder doesn't accumulate orphaned files. Returns
     /// <c>null</c> on success or an error string.
@@ -66,9 +66,9 @@ public static class ScheduledTaskLister
             return "task name is required";
         var id = JobId(taskName);
         if (id is null)
-            return $"refusing to cancel '{taskName}' — only {WatchDogClient.TaskFolder}* jobs are managed by psst";
+            return $"refusing to cancel '{taskName}' — only {SchedulerClient.TaskFolder}* jobs are managed by psst";
 
-        var result = await WatchDogClient.CancelAsync(id);
+        var result = await SchedulerClient.CancelAsync(id);
         if (!result.Success)
             return result.Error;
 
@@ -83,13 +83,13 @@ public static class ScheduledTaskLister
 
     /// <summary>
     /// The job id in <paramref name="taskName"/>: a bare id, or a name under
-    /// <see cref="WatchDogClient.TaskFolder"/> (with or without the leading
+    /// <see cref="SchedulerClient.TaskFolder"/> (with or without the leading
     /// backslash). Null for anything else.
     /// </summary>
     internal static string? JobId(string taskName)
     {
         var name = taskName.Trim();
-        var folder = WatchDogClient.TaskFolder;
+        var folder = SchedulerClient.TaskFolder;
         if (name.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
             name = name[folder.Length..];
         else if (name.StartsWith(folder.TrimStart('\\'), StringComparison.OrdinalIgnoreCase))
@@ -100,7 +100,7 @@ public static class ScheduledTaskLister
     /// <summary>
     /// Try to load a sidecar JSON from disk. Missing or malformed
     /// sidecars degrade gracefully — the caller just gets the bare
-    /// WatchDog row.
+    /// Scheduler row.
     /// </summary>
     internal static (ScheduledTaskRegistrar.SchedulingMetadata? Metadata, DateTime? FireTime)
         TryReadSidecar(string path)

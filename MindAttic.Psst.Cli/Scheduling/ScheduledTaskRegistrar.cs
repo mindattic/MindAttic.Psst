@@ -9,8 +9,8 @@ using System.Threading.Tasks;
 /// <summary>
 /// Registers a one-shot scheduled job that fires <c>psst.exe</c> at a
 /// specific local time. Used to back the <c>--schedule</c> / <c>--start</c>
-/// CLI flag. The job itself is made by MindAttic.WatchDog
-/// (<see cref="WatchDogClient"/>), never by Psst calling schtasks.
+/// CLI flag. The job itself is made by MindAttic.Scheduler
+/// (<see cref="SchedulerClient"/>), never by Psst calling schtasks.
 ///
 /// <para>
 /// Implementation note: rather than round-trip the message text through
@@ -23,7 +23,7 @@ using System.Threading.Tasks;
 /// </para>
 ///
 /// <para>
-/// The launcher cancels its own WatchDog job once the send is done. The
+/// The launcher cancels its own Scheduler job once the send is done. The
 /// launcher <c>.cmd</c> stays behind on disk; it's a few hundred bytes, and
 /// leaving it provides a paper trail for users who want to inspect what was
 /// scheduled.
@@ -95,12 +95,12 @@ public static class ScheduledTaskRegistrar
 
         // Unique-ish job and launcher names. The hex slice keeps the task
         // name short enough to fit comfortably in Task Scheduler's UI.
-        // WatchDog files the job at \MindAttic\WatchDog\Psst\<id>.
+        // Scheduler files the job at \MindAttic\Scheduler\Psst\<id>.
         var id = Guid.NewGuid().ToString("N")[..12];
-        var taskName = WatchDogClient.TaskFolder + id;
+        var taskName = SchedulerClient.TaskFolder + id;
 
         string cancelLine;
-        try { cancelLine = WatchDogClient.CancelCommandLine(id); }
+        try { cancelLine = SchedulerClient.CancelCommandLine(id); }
         catch (FileNotFoundException ex) { return new RegistrationResult(false, taskName, "", fireTime, ex.Message); }
 
         var launcherPath = await WriteLauncherCmdAsync(id, cancelLine, psstExePath, psstArgs);
@@ -111,9 +111,9 @@ public static class ScheduledTaskRegistrar
         if (metadata is not null)
             await WriteSidecarAsync(id, taskName, fireTime, launcherPath, metadata);
 
-        var added = await WatchDogClient.AddAsync(id, fireTime, launcherPath);
+        var added = await SchedulerClient.AddAsync(id, fireTime, launcherPath);
         if (!added.Success)
-            return new RegistrationResult(false, taskName, launcherPath, fireTime, $"watchdog job add failed: {added.Error}");
+            return new RegistrationResult(false, taskName, launcherPath, fireTime, $"scheduler job add failed: {added.Error}");
 
         return new RegistrationResult(true, taskName, launcherPath, fireTime, null);
     }
@@ -130,11 +130,11 @@ public static class ScheduledTaskRegistrar
     /// <summary>
     /// Materialize the launcher <c>.cmd</c> file. The file invokes
     /// <c>psst.exe</c> with the original argv, then cancels its own
-    /// WatchDog job and deletes the JSON sidecar so the system doesn't
+    /// Scheduler job and deletes the JSON sidecar so the system doesn't
     /// accumulate stale entries.
     ///
     /// <para>
-    /// WatchDog keeps a one-shot job registered after it runs until its
+    /// Scheduler keeps a one-shot job registered after it runs until its
     /// owner cancels it, so the launcher does that as its last step;
     /// cancelling never stops the run under way.
     /// </para>
@@ -170,7 +170,7 @@ public static class ScheduledTaskRegistrar
         // Run psst with the original argv.
         sb.AppendLine(BuildInvocationLine(psstExePath, psstArgs));
         sb.AppendLine("set PSST_EXIT=%ERRORLEVEL%");
-        // Self-cleanup: cancel the WatchDog job and delete the JSON sidecar.
+        // Self-cleanup: cancel the Scheduler job and delete the JSON sidecar.
         // Errors are swallowed — the cleanup is best-effort and we don't
         // want a missing file to mask the psst exit code.
         sb.AppendLine(SelfCancelLine(cancelLine));
@@ -214,7 +214,7 @@ public static class ScheduledTaskRegistrar
     }
 
     /// <summary>
-    /// The launcher line that cancels its own job: the WatchDog call with
+    /// The launcher line that cancels its own job: the Scheduler call with
     /// output silenced and every <c>%</c> doubled so a path holding one
     /// survives cmd's batch percent-expansion.
     /// </summary>

@@ -10,47 +10,47 @@ using MindAttic.Psst.Cli.Scheduling;
 using NUnit.Framework;
 
 /// <summary>
-/// Psst schedules, lists and cancels through MindAttic.WatchDog's
-/// <c>watchdog job</c> commands, never schtasks. These tests swap in a fake
-/// WatchDog runner, so they see the exact argv Psst sends and never touch the
+/// Psst schedules, lists and cancels through MindAttic.Scheduler's
+/// <c>scheduler job</c> commands, never schtasks. These tests swap in a fake
+/// Scheduler runner, so they see the exact argv Psst sends and never touch the
 /// real Task Scheduler.
 /// </summary>
-public class WatchDogSchedulingTests
+public class SchedulerSchedulingTests
 {
     private readonly List<string[]> _calls = new();
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "psst-watchdog-tests-" + Guid.NewGuid().ToString("N"));
-    private Func<IReadOnlyList<string>, Task<WatchDogClient.Result>>? _priorRunner;
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "psst-scheduler-tests-" + Guid.NewGuid().ToString("N"));
+    private Func<IReadOnlyList<string>, Task<SchedulerClient.Result>>? _priorRunner;
     private string? _priorLocation;
 
     [SetUp]
     public void SetUp()
     {
         Directory.CreateDirectory(_dir);
-        // The launcher's self-cancel line names watchdog.ps1; point it at a stand-in.
-        var script = Path.Combine(_dir, "watchdog.ps1");
+        // The launcher's self-cancel line names scheduler.ps1; point it at a stand-in.
+        var script = Path.Combine(_dir, "scheduler.ps1");
         File.WriteAllText(script, "");
-        _priorLocation = Environment.GetEnvironmentVariable(WatchDogClient.LocationVariable);
-        Environment.SetEnvironmentVariable(WatchDogClient.LocationVariable, script);
-        _priorRunner = WatchDogClient.Runner;
-        WatchDogClient.Runner = args =>
+        _priorLocation = Environment.GetEnvironmentVariable(SchedulerClient.LocationVariable);
+        Environment.SetEnvironmentVariable(SchedulerClient.LocationVariable, script);
+        _priorRunner = SchedulerClient.Runner;
+        SchedulerClient.Runner = args =>
         {
             _calls.Add(args.ToArray());
-            return Task.FromResult(new WatchDogClient.Result(0, "", ""));
+            return Task.FromResult(new SchedulerClient.Result(0, "", ""));
         };
     }
 
     [TearDown]
     public void TearDown()
     {
-        WatchDogClient.Runner = _priorRunner!;
-        Environment.SetEnvironmentVariable(WatchDogClient.LocationVariable, _priorLocation);
+        SchedulerClient.Runner = _priorRunner!;
+        Environment.SetEnvironmentVariable(SchedulerClient.LocationVariable, _priorLocation);
         try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
     }
 
     [Test]
     public async Task AddAsync_RegistersAOneShotPsstJobRunningTheLauncher()
     {
-        await WatchDogClient.AddAsync("abc123", new DateTime(2026, 10, 19, 9, 30, 0), @"C:\A Dir\abc123.cmd");
+        await SchedulerClient.AddAsync("abc123", new DateTime(2026, 10, 19, 9, 30, 0), @"C:\A Dir\abc123.cmd");
 
         Assert.That(_calls.Single(), Is.EqualTo(new[]
         {
@@ -62,7 +62,7 @@ public class WatchDogSchedulingTests
     [Test]
     public async Task CancelAsync_AcceptsThePrintedTaskNameOrTheBareId()
     {
-        Assert.That(await ScheduledTaskLister.CancelAsync(@"\MindAttic\WatchDog\Psst\abc123"), Is.Null);
+        Assert.That(await ScheduledTaskLister.CancelAsync(@"\MindAttic\Scheduler\Psst\abc123"), Is.Null);
         Assert.That(await ScheduledTaskLister.CancelAsync("abc123"), Is.Null);
 
         Assert.That(_calls, Has.Count.EqualTo(2));
@@ -78,43 +78,43 @@ public class WatchDogSchedulingTests
     }
 
     [Test]
-    public async Task CancelAsync_ReportsWatchDogsReason()
+    public async Task CancelAsync_ReportsSchedulersReason()
     {
-        WatchDogClient.Runner = _ => Task.FromResult(new WatchDogClient.Result(1, "", "watchdog: No job 'x' for owner 'Psst'\n"));
-        Assert.That(await ScheduledTaskLister.CancelAsync("x"), Is.EqualTo("watchdog: No job 'x' for owner 'Psst'"));
+        SchedulerClient.Runner = _ => Task.FromResult(new SchedulerClient.Result(1, "", "scheduler: No job 'x' for owner 'Psst'\n"));
+        Assert.That(await ScheduledTaskLister.CancelAsync("x"), Is.EqualTo("scheduler: No job 'x' for owner 'Psst'"));
     }
 
     [Test]
     public void ParseJobs_ReadsTheJsonListAndALoneObject()
     {
-        var many = WatchDogClient.ParseJobs(
-            """[{"name":"a","task":"\\MindAttic\\WatchDog\\Psst\\a","nextRun":"2026-10-19T09:30:00","command":"cmd.exe /c x.cmd"},{"name":"b","nextRun":null}]""");
+        var many = SchedulerClient.ParseJobs(
+            """[{"name":"a","task":"\\MindAttic\\Scheduler\\Psst\\a","nextRun":"2026-10-19T09:30:00","command":"cmd.exe /c x.cmd"},{"name":"b","nextRun":null}]""");
         Assert.That(many.Select(j => j.Name), Is.EqualTo(new[] { "a", "b" }));
         Assert.That(many[0].NextRun, Is.EqualTo(new DateTime(2026, 10, 19, 9, 30, 0)));
         Assert.That(many[0].Command, Is.EqualTo("cmd.exe /c x.cmd"));
         Assert.That(many[1].NextRun, Is.Null);
 
-        Assert.That(WatchDogClient.ParseJobs("""{"name":"solo"}""").Single().Name, Is.EqualTo("solo"));
-        Assert.That(WatchDogClient.ParseJobs("[]"), Is.Empty);
+        Assert.That(SchedulerClient.ParseJobs("""{"name":"solo"}""").Single().Name, Is.EqualTo("solo"));
+        Assert.That(SchedulerClient.ParseJobs("[]"), Is.Empty);
     }
 
     [Test]
     public void SelfCancelLine_CancelsThisJobQuietlyAndSurvivesPercents()
     {
-        var line = ScheduledTaskRegistrar.SelfCancelLine(@"powershell.exe -File ""C:\50%\watchdog.ps1"" job cancel abc --owner Psst");
-        Assert.That(line, Is.EqualTo(@"powershell.exe -File ""C:\50%%\watchdog.ps1"" job cancel abc --owner Psst >nul 2>nul"));
+        var line = ScheduledTaskRegistrar.SelfCancelLine(@"powershell.exe -File ""C:\50%\scheduler.ps1"" job cancel abc --owner Psst");
+        Assert.That(line, Is.EqualTo(@"powershell.exe -File ""C:\50%%\scheduler.ps1"" job cancel abc --owner Psst >nul 2>nul"));
     }
 
     [Test]
     public void LocateScript_PrefersTheConfiguredPath()
     {
-        Assert.That(WatchDogClient.LocateScript(), Is.EqualTo(Path.Combine(_dir, "watchdog.ps1")));
+        Assert.That(SchedulerClient.LocateScript(), Is.EqualTo(Path.Combine(_dir, "scheduler.ps1")));
 
-        Environment.SetEnvironmentVariable(WatchDogClient.LocationVariable, _dir);
-        Assert.That(WatchDogClient.LocateScript(), Is.EqualTo(Path.Combine(_dir, "watchdog.ps1")));
+        Environment.SetEnvironmentVariable(SchedulerClient.LocationVariable, _dir);
+        Assert.That(SchedulerClient.LocateScript(), Is.EqualTo(Path.Combine(_dir, "scheduler.ps1")));
 
-        Environment.SetEnvironmentVariable(WatchDogClient.LocationVariable, Path.Combine(_dir, "nope"));
-        Assert.Throws<FileNotFoundException>(() => WatchDogClient.LocateScript());
+        Environment.SetEnvironmentVariable(SchedulerClient.LocationVariable, Path.Combine(_dir, "nope"));
+        Assert.Throws<FileNotFoundException>(() => SchedulerClient.LocateScript());
     }
 
     // ---- One-time move of reminders Psst registered itself ----
@@ -142,7 +142,7 @@ public class WatchDogSchedulingTests
     }
 
     [Test]
-    public async Task Migrate_RecreatesDueRemindersThroughWatchDogAndRetiresTheOldTask()
+    public async Task Migrate_RecreatesDueRemindersThroughSchedulerAndRetiresTheOldTask()
     {
         var now = new DateTime(2026, 10, 18, 12, 0, 0);
         var due = WriteLegacy("due111", now.AddHours(3));
@@ -163,7 +163,7 @@ public class WatchDogSchedulingTests
         Assert.That(launcher, Does.Contain("\"C:\\tools\\psst.exe\" sms jordan hi"));
 
         using var sidecar = JsonDocument.Parse(File.ReadAllText(Path.Combine(_dir, "due111.json")));
-        Assert.That(sidecar.RootElement.GetProperty("taskName").GetString(), Is.EqualTo(@"\MindAttic\WatchDog\Psst\due111"));
+        Assert.That(sidecar.RootElement.GetProperty("taskName").GetString(), Is.EqualTo(@"\MindAttic\Scheduler\Psst\due111"));
         Assert.That(sidecar.RootElement.GetProperty("message").GetString(), Is.EqualTo("hi"));
 
         // Already moved: a second pass has nothing left to do.
@@ -176,19 +176,19 @@ public class WatchDogSchedulingTests
     public async Task RunOnce_WritesItsMarkerOnlyWhenEveryReminderMoved()
     {
         WriteLegacy("due333", DateTime.Now.AddHours(3));
-        WatchDogClient.Runner = args =>
+        SchedulerClient.Runner = args =>
         {
             _calls.Add(args.ToArray());
-            return Task.FromResult(new WatchDogClient.Result(1, "", "watchdog: boom"));
+            return Task.FromResult(new SchedulerClient.Result(1, "", "scheduler: boom"));
         };
 
         await LegacyTaskMigration.RunOnceAsync(_dir);
         Assert.That(File.Exists(Path.Combine(_dir, ".moved-to-watchdog")), Is.False);
 
-        WatchDogClient.Runner = args =>
+        SchedulerClient.Runner = args =>
         {
             _calls.Add(args.ToArray());
-            return Task.FromResult(new WatchDogClient.Result(0, "", ""));
+            return Task.FromResult(new SchedulerClient.Result(0, "", ""));
         };
         await LegacyTaskMigration.RunOnceAsync(_dir);
         Assert.That(File.Exists(Path.Combine(_dir, ".moved-to-watchdog")), Is.True);

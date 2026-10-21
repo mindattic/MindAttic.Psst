@@ -29,7 +29,7 @@ the instant it lands.
 - **SMS that actually arrives.** Email-to-SMS carrier fanout is the transport. Exactly one
   transport per send — no implicit fallback chain at send time ([LAW-4](#M.PSST-LAW-4)).
 - **No daemon, no service.** A single CLI. Nothing listening on a port; deferred/repeat sends
-  detach to a MindAttic.WatchDog job rather than holding the shell open.
+  detach to a MindAttic.Scheduler job rather than holding the shell open.
 - **Credentials stay out of the repo.** Secrets resolve through the shared `MindAttic.Vault`
   chain ([HOUSE-LAW-3](../../MindAttic.HouseRules.md#HOUSE-LAW-3)).
 - **Drip & defer.** `psst sms` supports `--repeat N`, `--interval/--every <dur>`, and
@@ -40,7 +40,7 @@ the instant it lands.
 - **NOT a background daemon or system tray app.** It is a one-shot CLI process. There is no
   resident listener, no port, no service registration.
 - **NOT cross-platform.** It targets `net10.0-windows`; sound playback is gated on Windows and
-  scheduling goes through MindAttic.WatchDog (`watchdog job`), which wraps Windows Task Scheduler. `PsstSoundPlayer` returns `"not windows"` elsewhere.
+  scheduling goes through MindAttic.Scheduler (`scheduler job`), which wraps Windows Task Scheduler. `PsstSoundPlayer` returns `"not windows"` elsewhere.
 - **NOT a general messaging/chat platform.** It sends short one-way notifications, not
   conversations. No inbound handling.
 - **NOT a multi-transport fan-out at send time.** A single send picks exactly one transport
@@ -79,7 +79,7 @@ the instant it lands.
   `MindAttic.Psst/MindAttic.Psst.csproj`.
 - **`MindAttic.Psst.Cli`** — the `psst.exe` console front door (`AssemblyName=psst`,
   `OutputType=Exe`). Owns argv parsing, subcommand dispatch, and scheduled sends through
-  MindAttic.WatchDog. File: `MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj`.
+  MindAttic.Scheduler. File: `MindAttic.Psst.Cli/MindAttic.Psst.Cli.csproj`.
 - **`MindAttic.Psst.Tests`** — NUnit test project (103 tests). File:
   `MindAttic.Psst.Tests/MindAttic.Psst.Tests.csproj`.
 
@@ -120,8 +120,8 @@ the instant it lands.
 - **`CarrierGateways.BuildFanout` / `Combine` / `NormalizeTo10Digits`** — recipient list math.
 - **`DurationParser.TryParse/Format`** (`MindAttic.Psst/Time/DurationParser.cs`) — `30s/5m/2h/1d` durations.
 - **`TimeOfDayParser.TryParse`** (`MindAttic.Psst/Time/TimeOfDayParser.cs`) — next-occurrence wall-clock times.
-- **`ScheduledTaskRegistrar.RegisterAsync`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskRegistrar.cs`) — register a deferred send as a WatchDog job (`watchdog job add`, via `WatchDogClient`).
-- **`LegacyTaskMigration.RunOnceAsync`** (`MindAttic.Psst.Cli/Scheduling/LegacyTaskMigration.cs`) — first run after the switch: move reminders Psst registered itself onto WatchDog.
+- **`ScheduledTaskRegistrar.RegisterAsync`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskRegistrar.cs`) — register a deferred send as a Scheduler job (`scheduler job add`, via `SchedulerClient`).
+- **`LegacyTaskMigration.RunOnceAsync`** (`MindAttic.Psst.Cli/Scheduling/LegacyTaskMigration.cs`) — first run after the switch: move reminders Psst registered itself onto Scheduler.
 - **`ScheduledTaskLister.ListAsync/CancelAsync`** (`MindAttic.Psst.Cli/Scheduling/ScheduledTaskLister.cs`) — enumerate/cancel pending sends.
 
 ## 5. The Laws {#M.PSST-§5}
@@ -166,13 +166,13 @@ implicit-`--schedule now` branch is suppressed when running as a scheduler child
 
 ### M.PSST-LAW-6 — Self-cleaning scheduled tasks {#M.PSST-LAW-6}
 A successful scheduled send leaves nothing pending: the launcher `.cmd` cancels its own
-WatchDog job (`watchdog job cancel`) and deletes its JSON sidecar after firing.
+Scheduler job (`scheduler job cancel`) and deletes its JSON sidecar after firing.
 (`ScheduledTaskRegistrar`, README "How `--schedule` is implemented".)
 
 ### M.PSST-LAW-7 — Machine-facing values are culture-invariant {#M.PSST-LAW-7}
-Values that cross a process or OS boundary (elapsed time in the SMS body, the WatchDog `--at`
+Values that cross a process or OS boundary (elapsed time in the SMS body, the Scheduler `--at`
 time/date) are formatted with `CultureInfo.InvariantCulture`, so a comma-decimal locale can't
-emit "1,5s" or a date WatchDog misreads. (`PsstCli.FormatElapsed`.)
+emit "1,5s" or a date Scheduler misreads. (`PsstCli.FormatElapsed`.)
 
 ## 6. Verified state {#M.PSST-§6}
 
@@ -195,7 +195,7 @@ Evidence captured 2026-10-03 on this working tree.
   PowerShell 5.1 output has no mojibake) — verified by `RepoScriptsTests`.
 - 🟡 **End-to-end live SMS delivery** (real carrier gateway) — not covered by an automated test
   (requires live credentials + a real phone). Exercised manually via `psst test`.
-- 🟡 **Live WatchDog registration / sound playback on hardware** — unit-tested at the
+- 🟡 **Live Scheduler registration / sound playback on hardware** — unit-tested at the
   string/quoting level; the actual OS calls are validated manually.
 
 ## 7. Active frontier {#M.PSST-§7}
@@ -230,7 +230,7 @@ Anything not meeting all five is `🟡 partial` or `⬜ planned` — never `✅`
 - **Carrier gateway** — a per-carrier email domain (e.g. `vtext.com`) that delivers email as SMS.
 - **Sidecar** — the JSON metadata file written next to a scheduled launcher `.cmd` so
   `psst scheduled` can render a meaningful listing.
-- **Launcher** — the self-cancelling `.cmd` a WatchDog job runs to perform a deferred send
+- **Launcher** — the self-cancelling `.cmd` a Scheduler job runs to perform a deferred send
   ([M.PSST-LAW-6](#M.PSST-LAW-6)).
 - **Vault chain** — the `MindAttic.Vault` `IConfiguration` source order (vault files →
   appsettings → `%APPDATA%` settings.json → env vars) credentials resolve through.

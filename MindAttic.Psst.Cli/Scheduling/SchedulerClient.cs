@@ -11,43 +11,43 @@ using System.Text.Json;
 using System.Threading.Tasks;
 
 /// <summary>
-/// Psst's only door to Windows Task Scheduler. MindAttic.WatchDog is the one
+/// Psst's only door to Windows Task Scheduler. MindAttic.Scheduler is the one
 /// thing that registers scheduled tasks (HOUSE-LAW-11), so Psst never calls
-/// <c>schtasks</c> itself: it runs WatchDog's
-/// <c>watchdog job add / cancel / list --owner Psst</c>, which keeps every
-/// reminder at <c>\MindAttic\WatchDog\Psst\&lt;id&gt;</c>, run headless.
+/// <c>schtasks</c> itself: it runs Scheduler's
+/// <c>scheduler job add / cancel / list --owner Psst</c>, which keeps every
+/// reminder at <c>\MindAttic\Scheduler\Psst\&lt;id&gt;</c>, run headless.
 /// </summary>
-public static class WatchDogClient
+public static class SchedulerClient
 {
     /// <summary>The owner every Psst job is filed under.</summary>
     public const string Owner = "Psst";
 
-    /// <summary>The Task Scheduler folder WatchDog keeps Psst's jobs in.</summary>
-    public const string TaskFolder = @"\MindAttic\WatchDog\Psst\";
+    /// <summary>The Task Scheduler folder Scheduler keeps Psst's jobs in.</summary>
+    public const string TaskFolder = @"\MindAttic\Scheduler\Psst\";
 
     /// <summary>
-    /// Points at <c>watchdog.ps1</c> (or the folder holding it) when it isn't
+    /// Points at <c>scheduler.ps1</c> (or the folder holding it) when it isn't
     /// found next to psst, e.g. for an installed copy outside the workspace.
     /// </summary>
-    public const string LocationVariable = "MINDATTIC_WATCHDOG";
+    public const string LocationVariable = "MINDATTIC_SCHEDULER";
 
-    /// <summary>One <c>watchdog job list --json</c> row.</summary>
+    /// <summary>One <c>scheduler job list --json</c> row.</summary>
     public sealed record Job(string Name, string Task, DateTime? NextRun, string Command);
 
-    /// <summary>Outcome of one WatchDog call: exit code and both streams.</summary>
+    /// <summary>Outcome of one Scheduler call: exit code and both streams.</summary>
     public sealed record Result(int ExitCode, string StdOut, string StdErr)
     {
         public bool Success => ExitCode == 0;
 
-        /// <summary>WatchDog's own reason on failure, else whatever it printed.</summary>
+        /// <summary>Scheduler's own reason on failure, else whatever it printed.</summary>
         public string Error => (string.IsNullOrWhiteSpace(StdErr) ? StdOut : StdErr).Trim();
     }
 
     /// <summary>
-    /// Runs WatchDog with the given arguments. Replaceable so tests can see
+    /// Runs Scheduler with the given arguments. Replaceable so tests can see
     /// the exact argv without touching the real scheduler.
     /// </summary>
-    internal static Func<IReadOnlyList<string>, Task<Result>> Runner { get; set; } = RunWatchDogAsync;
+    internal static Func<IReadOnlyList<string>, Task<Result>> Runner { get; set; } = RunSchedulerAsync;
 
     /// <summary>
     /// Register a one-shot job <paramref name="id"/> that runs
@@ -76,16 +76,16 @@ public static class WatchDogClient
     public static Task<Result> CancelAsync(string id) =>
         Runner(new[] { "job", "cancel", id, "--owner", Owner });
 
-    /// <summary>Every job WatchDog holds for Psst.</summary>
+    /// <summary>Every job Scheduler holds for Psst.</summary>
     public static async Task<IReadOnlyList<Job>> ListAsync()
     {
         var result = await Runner(new[] { "job", "list", "--owner", Owner, "--json" });
         if (!result.Success)
-            throw new InvalidOperationException($"watchdog job list failed: {result.Error}");
+            throw new InvalidOperationException($"scheduler job list failed: {result.Error}");
         return ParseJobs(result.StdOut);
     }
 
-    /// <summary>Parse the JSON <c>watchdog job list --json</c> prints.</summary>
+    /// <summary>Parse the JSON <c>scheduler job list --json</c> prints.</summary>
     internal static IReadOnlyList<Job> ParseJobs(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return Array.Empty<Job>();
@@ -112,15 +112,15 @@ public static class WatchDogClient
 
     /// <summary>
     /// The line a launcher <c>.cmd</c> runs to cancel its own job once the send
-    /// is done. WatchDog leaves a run under way alone when its task is
+    /// is done. Scheduler leaves a run under way alone when its task is
     /// unregistered, so the launcher can do this from inside the job.
     /// </summary>
     public static string CancelCommandLine(string id) =>
         $"powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{LocateScript()}\" job cancel {id} --owner {Owner}";
 
     /// <summary>
-    /// Find <c>watchdog.ps1</c>: <see cref="LocationVariable"/> first, then a
-    /// <c>MindAttic.WatchDog</c> folder beside one of psst's parent folders
+    /// Find <c>scheduler.ps1</c>: <see cref="LocationVariable"/> first, then a
+    /// <c>MindAttic.Scheduler</c> folder beside one of psst's parent folders
     /// (the workspace layout), then PATH.
     /// </summary>
     public static string LocateScript()
@@ -128,29 +128,29 @@ public static class WatchDogClient
         var configured = Environment.GetEnvironmentVariable(LocationVariable);
         if (!string.IsNullOrWhiteSpace(configured))
         {
-            var candidate = Directory.Exists(configured) ? Path.Combine(configured, "watchdog.ps1") : configured;
+            var candidate = Directory.Exists(configured) ? Path.Combine(configured, "scheduler.ps1") : configured;
             if (File.Exists(candidate)) return Path.GetFullPath(candidate);
-            throw new FileNotFoundException($"{LocationVariable} is set to '{configured}', but there is no watchdog.ps1 there.");
+            throw new FileNotFoundException($"{LocationVariable} is set to '{configured}', but there is no scheduler.ps1 there.");
         }
 
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            var candidate = Path.Combine(dir.FullName, "MindAttic.WatchDog", "watchdog.ps1");
+            var candidate = Path.Combine(dir.FullName, "MindAttic.Scheduler", "scheduler.ps1");
             if (File.Exists(candidate)) return candidate;
         }
 
         foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
         {
             if (string.IsNullOrWhiteSpace(dir)) continue;
-            var candidate = Path.Combine(dir.Trim(), "watchdog.ps1");
+            var candidate = Path.Combine(dir.Trim(), "scheduler.ps1");
             if (File.Exists(candidate)) return candidate;
         }
 
         throw new FileNotFoundException(
-            $"MindAttic.WatchDog's watchdog.ps1 was not found next to psst or on PATH; set {LocationVariable} to its path.");
+            $"MindAttic.Scheduler's scheduler.ps1 was not found next to psst or on PATH; set {LocationVariable} to its path.");
     }
 
-    private static async Task<Result> RunWatchDogAsync(IReadOnlyList<string> args)
+    private static async Task<Result> RunSchedulerAsync(IReadOnlyList<string> args)
     {
         string script;
         try { script = LocateScript(); }
@@ -182,7 +182,7 @@ public static class WatchDogClient
         }
         catch (Exception ex)
         {
-            return new Result(1, "", $"could not run WatchDog: {ex.Message}");
+            return new Result(1, "", $"could not run Scheduler: {ex.Message}");
         }
     }
 }

@@ -1001,7 +1001,7 @@ public sealed class PsstCli
     // Invariant culture so the elapsed time reads "1.5s" everywhere — without
     // it, machines whose culture uses a comma decimal separator emit "1,5s"
     // into the notification (the rest of the CLI already formats machine-facing
-    // values invariantly, e.g. the WatchDog --at time).
+    // values invariantly, e.g. the Scheduler --at time).
     internal static string FormatElapsed(TimeSpan t) =>
         t.TotalMinutes >= 1
             ? string.Create(CultureInfo.InvariantCulture, $"{(int)t.TotalMinutes}m{t.Seconds:00}s")
