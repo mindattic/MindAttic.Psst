@@ -54,7 +54,7 @@ public static class SchedulerClient
     /// <paramref name="launcherPath"/> at <paramref name="fireTime"/>
     /// (local), taking over <paramref name="replaces"/> if given.
     /// </summary>
-    public static Task<Result> AddAsync(string id, DateTime fireTime, string launcherPath, string? replaces = null)
+    public static Task<Result> AddAsync(string id, DateTime fireTime, string launcherPath, string? replaces = null, string? description = null)
     {
         var args = new List<string>
         {
@@ -62,7 +62,7 @@ public static class SchedulerClient
             "--owner", Owner,
             "--at", fireTime.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
             "--run", $"cmd.exe /c \"{launcherPath}\"",
-            "--description", "Psst scheduled send",
+            "--description", description ?? "Psst scheduled send",
         };
         if (replaces is not null)
         {

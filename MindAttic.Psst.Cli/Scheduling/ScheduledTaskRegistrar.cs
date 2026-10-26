@@ -84,7 +84,9 @@ public static class ScheduledTaskRegistrar
         string psstExePath,
         string[] psstArgs,
         DateTime fireTime,
-        SchedulingMetadata? metadata = null)
+        SchedulingMetadata? metadata = null,
+        string? name = null,
+        string? description = null)
     {
         if (string.IsNullOrWhiteSpace(psstExePath))
             return new RegistrationResult(false, "", "", fireTime, "psst exe path was empty");
@@ -96,7 +98,12 @@ public static class ScheduledTaskRegistrar
         // Unique-ish job and launcher names. The hex slice keeps the task
         // name short enough to fit comfortably in Task Scheduler's UI.
         // Scheduler files the job at \MindAttic\Scheduler\Psst\<id>.
-        var id = Guid.NewGuid().ToString("N")[..12];
+        // A caller-chosen name makes the job replaceable: Scheduler overwrites
+        // an existing job of the same name, and the launcher and sidecar are
+        // rewritten below.
+        if (name is not null && !IsValidName(name))
+            return new RegistrationResult(false, "", "", fireTime, $"invalid name '{name}': use letters, digits, '.', '_' or '-' (up to 64, starting with a letter or digit)");
+        var id = name ?? Guid.NewGuid().ToString("N")[..12];
         var taskName = SchedulerClient.TaskFolder + id;
 
         string cancelLine;
@@ -111,12 +118,19 @@ public static class ScheduledTaskRegistrar
         if (metadata is not null)
             await WriteSidecarAsync(id, taskName, fireTime, launcherPath, metadata);
 
-        var added = await SchedulerClient.AddAsync(id, fireTime, launcherPath);
+        var added = await SchedulerClient.AddAsync(id, fireTime, launcherPath, description: description);
         if (!added.Success)
             return new RegistrationResult(false, taskName, launcherPath, fireTime, $"scheduler job add failed: {added.Error}");
 
         return new RegistrationResult(true, taskName, launcherPath, fireTime, null);
     }
+
+    /// <summary>
+    /// True when <paramref name="name"/> can be a job id: it is also a file name
+    /// (launcher and sidecar) and a Task Scheduler task name, so only a safe subset.
+    /// </summary>
+    public static bool IsValidName(string? name) =>
+        !string.IsNullOrEmpty(name) && System.Text.RegularExpressions.Regex.IsMatch(name, @"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
 
     /// <summary>
     /// Returns the directory where launcher <c>.cmd</c> files and their

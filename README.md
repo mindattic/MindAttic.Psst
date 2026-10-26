@@ -93,7 +93,9 @@ psst ping                                  Show which SMS transports are configu
 psst sound                                 Just play the Psst sound.
 psst contacts [list|add|rm]                Manage the contact book.
 psst sms [flags] <to> <message...>         Send a one-off SMS (see "Repeat and schedule").
-psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends.
+psst remind --at <when> [--name <id>] <message...>
+                                           Notify the default recipient at <when>, any time ahead (see "Reminders").
+psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends and reminders.
 psst pending                               Alias for `psst scheduled`.
 ```
 
@@ -186,7 +188,7 @@ The `sms` subcommand accepts three optional flags that let you drip a message at
 |---|---|---|---|
 | `--repeat` | none | positive integer | Send the message N times total. Default `1`. |
 | `--interval` | `--every` | duration | Delay between repeats. Required whenever `--repeat` is greater than 1. |
-| `--schedule` | `--start` | time of day | Defer the first send to local wall-clock time T (next occurrence) via a Scheduler job. |
+| `--schedule` | `--start` | time | Defer the first send to time T via a Scheduler job. T is a time of day, a date, or an offset (see Time format); any future time works, years ahead included. |
 
 ### Duration format
 
@@ -204,13 +206,26 @@ Decimals (`1.5h`) and negatives are rejected.
 
 ### Time format
 
-`--schedule` / `--start` take a wall-clock time in the local timezone. It always resolves to the next future occurrence: if the time has already passed today, the schedule rolls forward to tomorrow.
+`--schedule` / `--start` (and `psst remind --at`) take a local time. A time of day resolves to the next future occurrence: if it has already passed today, it rolls forward to tomorrow. A date, date-time or offset names an exact moment, which must be in the future (a past one is refused); there is no upper limit, so `+5y` works.
 
 | Form | Meaning | Examples |
 |---|---|---|
 | 12-hour with marker | hour:minute, am/pm | `10:30am`, `2:30pm`, `10:30 AM` |
 | 24-hour | hour:minute, no marker | `10:30`, `22:30`, `23:59` |
 | Whole-hour shortcut | hour plus am/pm only | `10am`, `2pm` |
+| Date | that day at 09:00 | `2027-03-01` |
+| Date and time | exact local time | `2027-03-01T14:30`, `2027-03-01 14:30` |
+| Offset from now | `+N` then `m`, `h`, `d`, `w` or `y`, rounded up to the next whole minute | `+45m`, `+2h`, `+30d`, `+2w`, `+1y` |
+
+### Reminders
+
+```powershell
+psst remind --at <when> [--name <id>] <message...>
+psst remind --at 2027-03-01T09:00 --name cert "renew the TLS cert"
+psst remind --at +30d "pay rent"            # no --name: an id is generated and printed
+```
+
+At `<when>` (same forms as `--schedule`) Psst notifies the default recipient, exactly like `psst test <message>` (`psst --silent test <message>`). With `--name`, scheduling the same name again replaces the earlier reminder; names are letters, digits, `.`, `_` and `-`. Reminders show in `psst scheduled` and are cancelled with `psst scheduled cancel <id>`; a fired reminder cancels its own Scheduler job. Line breaks in the message become spaces.
 
 ### Examples
 
@@ -245,8 +260,8 @@ psst sms jordan "ping" --repeat 12 --every 5m --schedule now   # (illustrative)
 
 Under the hood, `--schedule` (and its alias `--start`):
 
-1. Resolves the time to a concrete local `DateTime` using next-occurrence semantics.
-2. Writes a small launcher `.cmd` file to `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that invokes `psst.exe sms …` with the original argv minus `--schedule` (so the deferred run does not re-schedule itself), keeps `--repeat`/`--interval`, and sets `PSST_FROM_SCHEDULE=1` so the deferred fire runs the send path. It then runs `watchdog job cancel <id> --owner Psst` and removes the JSON sidecar, so successful runs leave nothing pending behind.
+1. Resolves the time to a concrete local `DateTime` (next occurrence for a time of day, the exact moment for a date or offset).
+2. Writes a small launcher `.cmd` file to `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.cmd` that invokes `psst.exe sms …` with the original argv minus `--schedule` (so the deferred run does not re-schedule itself), keeps `--repeat`/`--interval`, and sets `PSST_FROM_SCHEDULE=1` so the deferred fire runs the send path. It then runs `scheduler job cancel <id> --owner Psst` and removes the JSON sidecar, so successful runs leave nothing pending behind.
 3. Writes a JSON sidecar `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.json` with the recipient, message, repeat and interval values, used by `psst scheduled` to render a meaningful listing.
 4. Calls `scheduler job add <id> --owner Psst --at <time> --run "cmd.exe /c <launcher>"`. Psst never registers a task itself: [HOUSE-LAW-11](../MindAttic.HouseRules.md#HOUSE-LAW-11) makes MindAttic.Scheduler the only thing that does, so the job lands at `\MindAttic\Scheduler\Psst\<id>` and runs headless (no console window, no stolen focus).
 

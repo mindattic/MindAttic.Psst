@@ -89,6 +89,7 @@ public sealed class PsstCli
                 "ping"                     => Ping(psstConfig),
                 "sound"                    => await SoundAsync(),
                 "contacts"                 => Contacts(args.Skip(1).ToArray()),
+                "remind"                   => await RemindAsync(args.Skip(1).ToArray()),
                 "sms"                      => await SmsAsync(args.Skip(1).ToArray(), psstConfig),
                 "scheduled" or "pending"   => await ScheduledAsync(args.Skip(1).ToArray()),
                 _                          => UnknownCommand(args[0]),
@@ -221,6 +222,57 @@ public sealed class PsstCli
         await Notify(config, message, silent);
         return 0;
     }
+
+    /// <summary>
+    /// <c>psst remind --at &lt;when&gt; [--name &lt;id&gt;] &lt;message...&gt;</c>: schedule a
+    /// Scheduler job that runs <c>psst --silent test &lt;message&gt;</c> at that time.
+    /// </summary>
+    private static async Task<int> RemindAsync(string[] args)
+    {
+        string? at = null, name = null;
+        var words = new List<string>();
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] is "--at" or "--name")
+            {
+                if (i + 1 >= args.Length) return RemindFail($"{args[i]} needs a value");
+                if (args[i] == "--at") at = args[i + 1]; else name = args[i + 1];
+                i++;
+            }
+            else words.Add(args[i]);
+        }
+        if (at is null) return RemindFail("--at <when> is required");
+        if (!ScheduleTimeParser.TryParse(at, DateTime.Now, out var when, out var timeError))
+            return RemindFail($"--at {timeError}");
+        // One line only: the message is written into a launcher .cmd, where a line break would end the command.
+        var message = string.Join(' ', string.Join(' ', words).Split(new[] { (char)13, (char)10 }, StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (message.Length == 0) return RemindFail("a message is required");
+
+        var exePath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("could not resolve current psst.exe path");
+        var metadata = new ScheduledTaskRegistrar.SchedulingMetadata("default recipient", message, 1, 0);
+        var reg = await ScheduledTaskRegistrar.RegisterAsync(
+            exePath, new[] { "--silent", "test", message }, when, metadata, name, "Psst reminder");
+        if (!reg.Success)
+        {
+            Console.Error.WriteLine($"error: could not schedule reminder — {reg.Error}");
+            return 1;
+        }
+        var id = reg.TaskName[(reg.TaskName.LastIndexOf((char)92) + 1)..];
+        Console.WriteLine($"→ reminder: {message}");
+        Console.WriteLine($"  ⏰ scheduled for {when:yyyy-MM-dd HH:mm} (id: {id})");
+        Console.WriteLine($"  · cancel with: psst scheduled cancel {id}");
+        return 0;
+
+        static int RemindFail(string err)
+        {
+            Console.Error.WriteLine($"error: {err}");
+            Console.Error.WriteLine(RemindUsage);
+            return 1;
+        }
+    }
+
+    private const string RemindUsage = "usage: psst remind --at <when> [--name <id>] <message...>";
 
     /// <summary>Print what transports would fire without sending anything.</summary>
     private static int Ping(PsstConfiguration config)
@@ -429,7 +481,7 @@ public sealed class PsstCli
     /// </summary>
     private const string SmsUsage =
         "usage: psst sms [--repeat N] [--interval|--every <30s|5m|2h|1d>] " +
-        "[--schedule|--start <10:30am>] <name-or-phone> <message...>";
+        "[--schedule|--start <10:30am|2027-03-01|2027-03-01T14:30|+30d>] <name-or-phone> <message...>";
 
     /// <summary>
     /// Result of parsing the <c>sms</c> subcommand's argv. Carries both the
@@ -675,9 +727,9 @@ public sealed class PsstCli
             if (a == "--schedule" || a == "--start")
             {
                 if (i + 1 >= args.Length)
-                    return Fail($"{a} needs a time (e.g. 10:30am, 2:30pm, 10:30, 22:30)");
-                if (!TimeOfDayParser.TryParse(args[i + 1], DateTime.Now, out var when))
-                    return Fail($"{a} got '{args[i + 1]}' — expected like 10:30am, 2:30pm, 10:30, 22:30");
+                    return Fail($"{a} needs a time (e.g. 10:30am, 22:30, 2027-03-01, 2027-03-01T14:30, +30d)");
+                if (!ScheduleTimeParser.TryParse(args[i + 1], DateTime.Now, out var when, out var timeError))
+                    return Fail($"{a} {timeError}");
                 scheduledFor = when;
                 // Intentionally do NOT add --schedule/--start to
                 // withoutSchedule — the scheduled-fire invocation must not
@@ -781,6 +833,8 @@ public sealed class PsstCli
             Console.WriteLine();
             Console.WriteLine("Schedule one with:");
             Console.WriteLine("  psst sms <to> \"<message>\" --schedule 10:30am");
+            Console.WriteLine("  psst sms <to> \"<message>\" --schedule 2027-03-01   # or 2027-03-01T14:30, +30d, +1y");
+            Console.WriteLine("  psst remind --at +30d --name rent \"pay rent\"");
             Console.WriteLine("  psst sms <to> \"<message>\" --repeat 3 --every 5m   # implicit `--schedule now`");
             return 0;
         }
@@ -908,6 +962,9 @@ public sealed class PsstCli
         Console.WriteLine("Commands:");
         Console.WriteLine("  [--silent] -- <command> [args...]   Run a command. Play Psst + SMS when it exits.");
         Console.WriteLine("  [--silent] test [message]           Fire a notification right now.");
+        Console.WriteLine("  remind --at <when> [--name <id>] <message...>");
+        Console.WriteLine("                                      Notify the default recipient at <when> (any future time).");
+        Console.WriteLine("                                      Same --name again replaces that reminder.");
         Console.WriteLine("  ping                                Show which SMS transports are configured.");
         Console.WriteLine("  sound                               Just play the Psst sound.");
         Console.WriteLine("  contacts [list|add|rm]              Manage the contact book.");
@@ -923,8 +980,11 @@ public sealed class PsstCli
         Console.WriteLine("  --repeat N                  Send the message N times total. Default 1.");
         Console.WriteLine("  --interval D / --every D    Delay between repeats. D = 30s | 5m | 2h | 1d.");
         Console.WriteLine("                              Required whenever --repeat > 1.");
-        Console.WriteLine("  --schedule T / --start T    Defer first send to local time T via Task Scheduler.");
-        Console.WriteLine("                              T = 10:30am | 2:30pm | 10:30 | 22:30 (next occurrence).");
+        Console.WriteLine("  --schedule T / --start T    Defer first send to T through a MindAttic.Scheduler job.");
+        Console.WriteLine("                              T = 10:30am | 22:30 (next occurrence)");
+        Console.WriteLine("                                | 2027-03-01 (09:00) | 2027-03-01T14:30 | 2027-03-01 14:30");
+        Console.WriteLine("                                | +30d | +2h | +45m | +2w | +1y (offset from now).");
+        Console.WriteLine("                              Any future time works, years ahead included.");
         Console.WriteLine();
         Console.WriteLine("Examples:");
         Console.WriteLine("  psst -- dotnet test");
@@ -934,6 +994,8 @@ public sealed class PsstCli
         Console.WriteLine("  psst sms jordan \"ping\" --repeat 12 --every 5m");
         Console.WriteLine("  psst sms jordan \"good morning\" --schedule 10:30am");
         Console.WriteLine("  psst sms jordan \"standup\" --start 9:00am --repeat 5 --every 1m");
+        Console.WriteLine("  psst sms jordan \"renew the cert\" --schedule 2027-03-01");
+        Console.WriteLine("  psst remind --at +30d --name rent \"pay rent\"");
         Console.WriteLine("  psst contacts add jordan +15551234567");
         Console.WriteLine();
         Console.WriteLine(CredentialChainHelp);

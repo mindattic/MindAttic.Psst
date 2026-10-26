@@ -59,6 +59,62 @@ public class SchedulerSchedulingTests
         }));
     }
 
+    [TestCase("rent", true)]
+    [TestCase("pay-rent.2027_a", true)]
+    [TestCase("", false)]
+    [TestCase("-lead", false)]
+    [TestCase("has space", false)]
+    [TestCase("a\b", false)]
+    [TestCase("a&b", false)]
+    [TestCase("..", false)]
+    public void IsValidName_AllowsOnlySafeJobIds(string name, bool valid)
+    {
+        Assert.That(ScheduledTaskRegistrar.IsValidName(name), Is.EqualTo(valid));
+    }
+
+    [Test]
+    public async Task RegisterAsync_WithAName_ReusesItSoSchedulingAgainReplaces()
+    {
+        var exe = Path.Combine(_dir, "psst.exe");
+        File.WriteAllText(exe, "");
+        var name = "psst-test-" + Guid.NewGuid().ToString("N")[..8];
+        var when = DateTime.Now.AddYears(3);
+        try
+        {
+            var first = await ScheduledTaskRegistrar.RegisterAsync(exe, new[] { "--silent", "test", "one" }, when, name: name, description: "Psst reminder");
+            var second = await ScheduledTaskRegistrar.RegisterAsync(exe, new[] { "--silent", "test", "two" }, when, name: name);
+
+            Assert.That(first.Success && second.Success, Is.True);
+            Assert.That(_calls, Has.Count.EqualTo(2));
+            Assert.That(_calls.Select(c => c[2]), Has.All.EqualTo(name));
+            Assert.That(_calls[0], Does.Contain("Psst reminder"));
+            Assert.That(File.ReadAllText(second.LauncherPath), Does.Contain(" two").And.Not.Contain(" one"));
+        }
+        finally
+        {
+            ScheduledTaskLister.CancelAsync(name).GetAwaiter().GetResult();
+        }
+    }
+
+    [Test]
+    public async Task RegisterAsync_RefusesABadNameAndAPastTime()
+    {
+        var exe = Path.Combine(_dir, "psst.exe");
+        File.WriteAllText(exe, "");
+        var bad = await ScheduledTaskRegistrar.RegisterAsync(exe, new[] { "test", "x" }, DateTime.Now.AddDays(1), name: "a&b");
+        Assert.That(bad.Success, Is.False);
+        var past = await ScheduledTaskRegistrar.RegisterAsync(exe, new[] { "test", "x" }, DateTime.Now.AddDays(-1), name: "ok");
+        Assert.That(past.Success, Is.False);
+        Assert.That(_calls, Is.Empty);
+    }
+
+    [Test]
+    public void BuildInvocationLine_NeutralizesQuotesAndShellMetacharactersInAReminder()
+    {
+        var line = ScheduledTaskRegistrar.BuildInvocationLine(@"C:\psst.exe", new[] { "--silent", "test", "a \"b\" & c | d > e %PATH%" });
+        Assert.That(line, Is.EqualTo(@"""C:\psst.exe"" --silent test ""a \""b\"" & c | d > e %%PATH%%"""));
+    }
+
     [Test]
     public async Task CancelAsync_AcceptsThePrintedTaskNameOrTheBareId()
     {
