@@ -312,7 +312,8 @@ public sealed class PsstCli
         if (!config.HasAnySmsTransport)
         {
             Console.WriteLine("No SMS transport configured. Set up the email-to-SMS credentials:");
-            Console.WriteLine($"  • Create {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
+            Console.WriteLine("  • In MindAttic Vault: Credentials → Notifications (email and recipient fields).");
+            Console.WriteLine($"  • Or create {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
             Console.WriteLine("      {");
             Console.WriteLine("        \"email\": {");
             Console.WriteLine("          \"smtpHost\": \"smtp.example.com\", \"smtpPort\": 587,");

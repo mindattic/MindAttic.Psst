@@ -33,7 +33,7 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="MailKit" Version="4.16.0" />
-    <PackageReference Include="MindAttic.Vault" Version="1.0.0" />
+    <PackageReference Include="MindAttic.Vault" Version="7.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
   </ItemGroup>
 
