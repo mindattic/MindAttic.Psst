@@ -131,4 +131,33 @@ public class PsstCliTests
         Assert.That(order, Is.EqualTo(order.OrderBy(i => i))); // lowest -> highest precedence, as BuildConfiguration adds them
         Assert.That(text, Does.Contain("MindAttic:Vault:Notifications"));
     }
+
+    // ---- psst ping: the Vault source is the Notifications credential group (M.PSST-T28) ----
+
+    [Test]
+    public void PingSourceLines_NameVaultNotificationsProvidersJson_AndMarkItFound()
+    {
+        var envVar = MindAttic.Vault.Paths.VaultPaths.RoamingRootEnvVar;
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"psst-ping-{Guid.NewGuid():N}");
+        var prior = Environment.GetEnvironmentVariable(envVar);
+        Environment.SetEnvironmentVariable(envVar, tempRoot);
+        try
+        {
+            var expected = Path.Combine(tempRoot, "Notifications", "providers.json");
+            Assert.That(MindAttic.Psst.Configuration.PsstConfigurationSources.GetVaultCredentialsPath(), Is.EqualTo(expected));
+
+            var missing = PsstCli.SourceLines();
+            Assert.That(string.Join("\n", missing), Does.Not.Contain("<LLM|Brokers>"));
+            Assert.That(missing.Single(l => l.Contains(expected)), Does.StartWith("  · vault file:"));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(expected)!);
+            File.WriteAllText(expected, "{}");
+            Assert.That(PsstCli.SourceLines().Single(l => l.Contains(expected)), Does.StartWith("  ✓ vault file:"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envVar, prior);
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }

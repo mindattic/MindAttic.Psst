@@ -22,4 +22,15 @@ public static class PsstConfigurationSources
     /// <summary>Full path of the primary settings.json (may not exist yet).</summary>
     public static string GetSettingsPath() =>
         Path.Combine(GetAppDataDirectory(), "settings.json");
+
+    /// <summary>Vault's shared credential group that holds Psst's SMTP/recipient settings.</summary>
+    public const string CredentialBucket = "Notifications";
+
+    /// <summary>
+    /// The Vault file behind <c>MindAttic:Vault:Notifications</c>
+    /// (<c>%APPDATA%/MindAttic/Notifications/providers.json</c>), edited in Vault.Desktop's
+    /// Credentials → Notifications.
+    /// </summary>
+    public static string GetVaultCredentialsPath() =>
+        Path.Combine(VaultPaths.RoamingBucket(CredentialBucket), "providers.json");
 }

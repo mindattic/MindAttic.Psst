@@ -295,10 +295,8 @@ public sealed class PsstCli
         var settingsPath = PsstConfigurationSources.GetSettingsPath();
         Console.WriteLine();
         Console.WriteLine("Sources (lowest → highest precedence):");
-        Console.WriteLine($"  · vault files:   {VaultPaths.RoamingRoot}{Path.DirectorySeparatorChar}<LLM|Brokers>{Path.DirectorySeparatorChar}providers.json");
-        Console.WriteLine($"  {SourceMark(File.Exists("appsettings.json"))} appsettings:    .{Path.DirectorySeparatorChar}appsettings.json");
-        Console.WriteLine($"  {SourceMark(File.Exists(settingsPath))} settings.json:  {settingsPath}");
-        Console.WriteLine($"  · env vars:      MindAttic__Vault__Notifications__*");
+        foreach (var line in SourceLines())
+            Console.WriteLine(line);
 
         if (config.Errors.Count > 0)
         {
@@ -313,7 +311,7 @@ public sealed class PsstCli
         {
             Console.WriteLine("No SMS transport configured. Set up the email-to-SMS credentials:");
             Console.WriteLine("  • In MindAttic Vault: Credentials → Notifications (email and recipient fields).");
-            Console.WriteLine($"  • Or create {Path.Combine(VaultPaths.RoamingRoot, "Notifications", "providers.json")}");
+            Console.WriteLine($"  • Or create {PsstConfigurationSources.GetVaultCredentialsPath()}");
             Console.WriteLine("      {");
             Console.WriteLine("        \"email\": {");
             Console.WriteLine("          \"smtpHost\": \"smtp.example.com\", \"smtpPort\": 587,");
@@ -324,6 +322,24 @@ public sealed class PsstCli
             Console.WriteLine($"  • Or place the same settings in {settingsPath} under MindAttic:Vault:Notifications.");
         }
         return 0;
+    }
+
+    /// <summary>
+    /// The "Sources" lines of <c>psst ping</c>, each marked ✓ when its file exists. The Vault line is
+    /// the Notifications credential group Psst actually reads (M.PSST-T28: it used to name
+    /// <c>&lt;LLM|Brokers&gt;\providers.json</c> and never said whether the file was there).
+    /// </summary>
+    internal static string[] SourceLines()
+    {
+        var vaultPath = PsstConfigurationSources.GetVaultCredentialsPath();
+        var settingsPath = PsstConfigurationSources.GetSettingsPath();
+        return
+        [
+            $"  {SourceMark(File.Exists(vaultPath))} vault file:     {vaultPath}",
+            $"  {SourceMark(File.Exists("appsettings.json"))} appsettings:    .{Path.DirectorySeparatorChar}appsettings.json",
+            $"  {SourceMark(File.Exists(settingsPath))} settings.json:  {settingsPath}",
+            "  · env vars:      MindAttic__Vault__Notifications__*",
+        ];
 
         static string SourceMark(bool found) => found ? "✓" : "·";
     }
