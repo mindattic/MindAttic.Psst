@@ -158,3 +158,6 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 | M.PSST-T24 | 2026-10-24 | docs | closed | Update USER_STORIES.md | — |
 | M.PSST-T25 | 2026-10-26 | feature | closed | Psst schedules for any future date and time (days to years ahead) through MindAttic.Scheduler: 'psst sms --schedule' accepts a full date/time (yyyy-MM-dd, yyyy-MM-ddTHH:mm, or a relative like +30d) not just the next time of day, and a new 'psst remind --at <when> [--name <id>] <message...>' notifies the default recipient then; a named reminder is replaced when scheduled again and can be cancelled ('psst scheduled cancel <id>') | 4960f2f |
 | M.PSST-T26 | 2026-10-27 | docs | closed | Update USER_STORIES.md | — |
+| M.PSST-T27 | 2026-10-31 | feature | closed | LAMP: move MindAttic.Psst's app-level settings and keys to MindAttic.Vault.Desktop (manifest, LoadOrSeed, shared named keys, cog opens Vault) | 034b068 full suite 171/171; editing via M.VALT-T62 |
+| M.PSST-T28 | 2026-10-31 | fix | closed | psst ping's Sources list names the Vault file as <LLM\|Brokers>\providers.json, not the Notifications\providers.json Psst actually reads, and never says whether it was found (found in the LAMP bug hunt) | e535996 PsstCliTests.PingSourceLines_NameVaultNotificationsProvidersJson_AndMarkItFound |
+| M.PSST-T29 | 2026-10-31 | docs | closed | Update USER_STORIES.md | — |
