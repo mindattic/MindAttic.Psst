@@ -6,7 +6,7 @@
 <title>MindAttic.Psst</title>
 <meta name="description" content="Stop babysitting your terminal. Psst taps you on the shoulder the moment a long-running command finishes — a sound at your desk, a text on your phone.">
 <meta name="generator" content="MindAttic Codex build-readme.ps1">
-<meta name="generated" content="2026-10-20">
+<meta name="generated" content="2026-11-02">
 <style>:root{
   --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;
   --border:#30363d;
@@ -180,7 +180,9 @@ psst ping                                  Show which SMS transports are configu
 psst sound                                 Just play the Psst sound.
 psst contacts [list|add|rm]                Manage the contact book.
 psst sms [flags] &lt;to&gt; &lt;message...&gt;         Send a one-off SMS (see "Repeat and schedule").
-psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends.
+psst remind --at &lt;when&gt; [--name &lt;id&gt;] &lt;message...&gt;
+                                           Notify the default recipient at &lt;when&gt;, any time ahead (see "Reminders").
+psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends and reminders.
 psst pending                               Alias for `psst scheduled`.</code></pre>
 <p>Running <code>psst</code> with no arguments, or <code>psst -h</code> / <code>--help</code> / <code>help</code> / <code>/?</code>, prints the built-in usage summary (<code>PsstCli.PrintUsage</code>), ending with the credential chain in precedence order (vault files, <code>./appsettings.json</code>, <code>%APPDATA%\MindAttic\Psst\settings.json</code>, environment variables).</p>
 <h3 id="global-flags">Global flags</h3>
@@ -291,8 +293,8 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <tr>
 <td><code>--schedule</code></td>
 <td><code>--start</code></td>
-<td>time of day</td>
-<td>Defer the first send to local wall-clock time T (next occurrence) via a Scheduler job.</td>
+<td>time</td>
+<td>Defer the first send to time T via a Scheduler job. T is a time of day, a date, or an offset (see Time format); any future time works, years ahead included.</td>
 </tr>
 </tbody></table>
 <h3 id="duration-format">Duration format</h3>
@@ -330,7 +332,7 @@ psst pending                               Alias for `psst scheduled`.</code></p
 </tbody></table>
 <p>Decimals (<code>1.5h</code>) and negatives are rejected.</p>
 <h3 id="time-format">Time format</h3>
-<p><code>--schedule</code> / <code>--start</code> take a wall-clock time in the local timezone. It always resolves to the next future occurrence: if the time has already passed today, the schedule rolls forward to tomorrow.</p>
+<p><code>--schedule</code> / <code>--start</code> (and <code>psst remind --at</code>) take a local time. A time of day resolves to the next future occurrence: if it has already passed today, it rolls forward to tomorrow. A date, date-time or offset names an exact moment, which must be in the future (a past one is refused); there is no upper limit, so <code>+5y</code> works.</p>
 <table><thead><tr>
 <th>Form</th>
 <th>Meaning</th>
@@ -351,7 +353,27 @@ psst pending                               Alias for `psst scheduled`.</code></p
 <td>hour plus am/pm only</td>
 <td><code>10am</code>, <code>2pm</code></td>
 </tr>
+<tr>
+<td>Date</td>
+<td>that day at 09:00</td>
+<td><code>2027-03-01</code></td>
+</tr>
+<tr>
+<td>Date and time</td>
+<td>exact local time</td>
+<td><code>2027-03-01T14:30</code>, <code>2027-03-01 14:30</code></td>
+</tr>
+<tr>
+<td>Offset from now</td>
+<td><code>+N</code> then <code>m</code>, <code>h</code>, <code>d</code>, <code>w</code> or <code>y</code>, rounded up to the next whole minute</td>
+<td><code>+45m</code>, <code>+2h</code>, <code>+30d</code>, <code>+2w</code>, <code>+1y</code></td>
+</tr>
 </tbody></table>
+<h3 id="reminders">Reminders</h3>
+<pre><code class="language-powershell">psst remind --at &lt;when&gt; [--name &lt;id&gt;] &lt;message...&gt;
+psst remind --at 2027-03-01T09:00 --name cert "renew the TLS cert"
+psst remind --at +30d "pay rent"            # no --name: an id is generated and printed</code></pre>
+<p>At <code>&lt;when&gt;</code> (same forms as <code>--schedule</code>) Psst notifies the default recipient, exactly like <code>psst test &lt;message&gt;</code> (<code>psst --silent test &lt;message&gt;</code>). With <code>--name</code>, scheduling the same name again replaces the earlier reminder; names are letters, digits, <code>.</code>, <code>_</code> and <code>-</code>. Reminders show in <code>psst scheduled</code> and are cancelled with <code>psst scheduled cancel &lt;id&gt;</code>; a fired reminder cancels its own Scheduler job. Line breaks in the message become spaces.</p>
 <h3 id="examples">Examples</h3>
 <pre><code class="language-powershell"># Single send (no flags: runs in-process and returns immediately).
 psst sms jordan "MFE."
@@ -374,8 +396,8 @@ psst sms jordan "ping" --repeat 12 --every 5m --schedule now   # (illustrative)<
 <h2 id="how-scheduling-works">How scheduling works</h2>
 <p>Under the hood, <code>--schedule</code> (and its alias <code>--start</code>):</p>
 <ol>
-<li>Resolves the time to a concrete local <code>DateTime</code> using next-occurrence semantics.</li>
-<li>Writes a small launcher <code>.cmd</code> file to <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.cmd</code> that invokes <code>psst.exe sms …</code> with the original argv minus <code>--schedule</code> (so the deferred run does not re-schedule itself), keeps <code>--repeat</code>/<code>--interval</code>, and sets <code>PSST_FROM_SCHEDULE=1</code> so the deferred fire runs the send path. It then runs <code>watchdog job cancel &lt;id&gt; --owner Psst</code> and removes the JSON sidecar, so successful runs leave nothing pending behind.</li>
+<li>Resolves the time to a concrete local <code>DateTime</code> (next occurrence for a time of day, the exact moment for a date or offset).</li>
+<li>Writes a small launcher <code>.cmd</code> file to <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.cmd</code> that invokes <code>psst.exe sms …</code> with the original argv minus <code>--schedule</code> (so the deferred run does not re-schedule itself), keeps <code>--repeat</code>/<code>--interval</code>, and sets <code>PSST_FROM_SCHEDULE=1</code> so the deferred fire runs the send path. It then runs <code>scheduler job cancel &lt;id&gt; --owner Psst</code> and removes the JSON sidecar, so successful runs leave nothing pending behind.</li>
 <li>Writes a JSON sidecar <code>%LOCALAPPDATA%\MindAttic\Psst\scheduled\&lt;id&gt;.json</code> with the recipient, message, repeat and interval values, used by <code>psst scheduled</code> to render a meaningful listing.</li>
 <li>Calls <code>scheduler job add &lt;id&gt; --owner Psst --at &lt;time&gt; --run "cmd.exe /c &lt;launcher&gt;"</code>. Psst never registers a task itself: <a href="../MindAttic.HouseRules.md#HOUSE-LAW-11">HOUSE-LAW-11</a> makes MindAttic.Scheduler the only thing that does, so the job lands at <code>\MindAttic\Scheduler\Psst\&lt;id&gt;</code> and runs headless (no console window, no stolen focus).</li>
 </ol>
@@ -675,7 +697,7 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 <ul>
 <li><a href="docs/BIBLE.md">docs/BIBLE.md</a>: architecture, rationale, the project's Laws and verified build/test evidence.</li>
 <li><a href="docs/AMENDMENTS.md">docs/AMENDMENTS.md</a>: pending decisions not yet folded into the bible (normally empty).</li>
-<li><a href="docs/USER<em>STORIES.md">docs/USER</em>STORIES.md</a>: story-by-story backlog, and which behaviours are test-verified versus manual-only.</li>
+<li><a href="docs/USER_STORIES.md">docs/USER_STORIES.md</a>: story-by-story backlog, and which behaviours are test-verified versus manual-only.</li>
 <li><a href="docs/BIBLE.digest.md">docs/BIBLE.digest.md</a>: generated digest of the bible.</li>
 <li><a href="AGENTS.md">AGENTS.md</a>: instructions for coding agents working in this repo. Agents: read the <a href="#opt-in-only">Opt-in only</a> rule above before touching any command line.</li>
 </ul>
@@ -684,7 +706,7 @@ powershell -File tools/codex.ps1 doctor   # lint front-matter, links, cited test
 <hr>
 <p>Part of <a href="https://mindattic.com">MindAttic</a> — see more projects at <a href="https://github.com/mindattic">github.com/mindattic</a>. Related: <a href="https://github.com/mindattic/MindAttic.Vault">MindAttic.Vault</a> (credential and settings chain Psst reads from).</p>
 
-    <p class="codex-footer">Generated 2026-10-20 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
+    <p class="codex-footer">Generated 2026-11-02 by the shared MindAttic Codex engine (<code>codex-standard/build-readme.ps1</code>) from <code>README.md</code>. Edit the Markdown source, not this file.</p>
   </main>
 </div>
 <script>(function(){
