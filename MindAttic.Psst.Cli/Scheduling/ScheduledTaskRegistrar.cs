@@ -37,6 +37,9 @@ public static class ScheduledTaskRegistrar
     // redirection/piping/grouping/separators).
     private static readonly char[] CmdSpecialChars = { ' ', '\t', '"', '\n', '\v', '&', '|', '<', '>', '^', '(', ')' };
 
+    /// <summary>UTF-8 without a BOM: the only UTF-8 a <c>.cmd</c> launcher can be written in.</summary>
+    internal static readonly Encoding LauncherEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
 
     /// <summary>
     /// Outcome of a <see cref="RegisterAsync"/> call. Either the task was
@@ -188,10 +191,13 @@ public static class ScheduledTaskRegistrar
         // Errors are swallowed — the cleanup is best-effort and we don't
         // want a missing file to mask the psst exit code.
         sb.AppendLine(SelfCancelLine(cancelLine));
-        sb.AppendLine($"del /Q \"{sidecarPath}\" >nul 2>nul");
+        // %-doubled like the other lines, so a profile path holding a '%' survives batch expansion.
+        sb.AppendLine($"del /Q \"{sidecarPath.Replace("%", "%%")}\" >nul 2>nul");
         sb.AppendLine("exit /b %PSST_EXIT%");
 
-        await File.WriteAllTextAsync(launcherPath, sb.ToString(), Encoding.UTF8);
+        // No BOM: cmd.exe does not understand one, so a BOM glued to the first
+        // line turns "@echo off" into an unknown command and echo stays on.
+        await File.WriteAllTextAsync(launcherPath, sb.ToString(), LauncherEncoding);
         return launcherPath;
     }
 
@@ -251,10 +257,20 @@ public static class ScheduledTaskRegistrar
         // Quote the exe path even when it has no spaces — cheap, and removes
         // any ambiguity about where the exe ends and the args begin.
         sb.Append('"').Append(psstExePath).Append('"');
+        // A line break ends the command on a batch-file line even inside quotes
+        // (the rest would run as a separate command), so each arg is flattened
+        // to one line first — the same rule `psst remind` applies to its message.
         foreach (var a in psstArgs)
-            sb.Append(' ').Append(QuoteForWindowsCommandLine(a));
+            sb.Append(' ').Append(QuoteForWindowsCommandLine(FlattenLineBreaks(a)));
         return sb.ToString().Replace("%", "%%");
     }
+
+    private static string FlattenLineBreaks(string arg) =>
+        arg.IndexOfAny(LineBreaks) < 0
+            ? arg
+            : string.Join(' ', arg.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries));
+
+    private static readonly char[] LineBreaks = { '\r', '\n' };
 
     /// <summary>
     /// Quote a single argument using Windows <c>CommandLineToArgvW</c>

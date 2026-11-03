@@ -156,8 +156,18 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
             ? SecureSocketOptions.SslOnConnect
             : SecureSocketOptions.StartTls;
 
-        await smtp.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secure, cancellationToken);
-        await smtp.AuthenticateAsync(_settings.Username, _settings.Password, cancellationToken);
+        try
+        {
+            await smtp.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secure, cancellationToken);
+            await smtp.AuthenticateAsync(_settings.Username, _settings.Password, cancellationToken);
+        }
+        catch
+        {
+            // Not stored in _smtp yet, so TryDisconnectAsync can't reach it:
+            // release the socket here (e.g. connected but auth refused).
+            smtp.Dispose();
+            throw;
+        }
         _smtp = smtp;
         return smtp;
     }

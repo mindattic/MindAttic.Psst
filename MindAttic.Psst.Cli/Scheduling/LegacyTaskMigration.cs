@@ -119,7 +119,7 @@ public static class LegacyTaskMigration
         var cancel = ScheduledTaskRegistrar.SelfCancelLine(SchedulerClient.CancelCommandLine(id));
         var lines = (await File.ReadAllLinesAsync(launcherPath))
             .Select(l => l.TrimStart().StartsWith("schtasks /Delete", StringComparison.OrdinalIgnoreCase) ? cancel : l);
-        await File.WriteAllTextAsync(launcherPath, string.Join("\r\n", lines) + "\r\n", Encoding.UTF8);
+        await File.WriteAllTextAsync(launcherPath, string.Join("\r\n", lines) + "\r\n", ScheduledTaskRegistrar.LauncherEncoding);
     }
 
     private static async Task RewriteSidecarTaskNameAsync(string sidecarPath, string taskName)

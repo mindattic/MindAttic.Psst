@@ -617,7 +617,8 @@ public sealed class PsstCli
                 Recipient:       label,
                 Message:         message,
                 Repeat:          parse.Repeat,
-                IntervalSeconds: (int)parse.Interval.TotalSeconds);
+                // Saturate: an unchecked cast of a huge --every (e.g. 99999d) wraps negative.
+                IntervalSeconds: (int)Math.Min(parse.Interval.TotalSeconds, int.MaxValue));
 
             var reg = await ScheduledTaskRegistrar.RegisterAsync(
                 exePath, scheduledArgs.ToArray(), parse.ScheduledFor.Value, metadata);
@@ -655,7 +656,7 @@ public sealed class PsstCli
             if (i > 0)
             {
                 Console.WriteLine($"  · sleeping {DurationParser.Format(parse.Interval)} before send {i + 1} of {parse.Repeat}…");
-                try { await Task.Delay(parse.Interval); }
+                try { await DelayAsync(parse.Interval); }
                 catch (TaskCanceledException) { return 1; }
             }
 
@@ -664,9 +665,28 @@ public sealed class PsstCli
             Console.WriteLine($"→ {label}{sendLabel}: {message}");
             foreach (var a in result.SmsAttempts)
                 Console.WriteLine($"  {(a.Success ? "✓" : "✗")} {a.Transport}: {a.Detail}");
+            // No attempt at all means the phone didn't normalize to a US number
+            // (e.g. a contact saved as "555"); say so instead of failing silently.
+            if (result.SmsAttempts.Count == 0)
+                Console.Error.WriteLine($"  ✗ '{phone}' is not a 10-digit US phone number — nothing was sent");
             if (!result.AnySmsSent) allSucceeded = false;
         }
         return allSucceeded ? 0 : 1;
+    }
+
+    /// <summary>
+    /// <see cref="Task.Delay(TimeSpan)"/> for any length: it throws for spans
+    /// over ~49.7 days, which `--every 60d` reaches, so wait in chunks.
+    /// </summary>
+    private static async Task DelayAsync(TimeSpan interval)
+    {
+        var chunk = TimeSpan.FromDays(30);
+        while (interval > chunk)
+        {
+            await Task.Delay(chunk);
+            interval -= chunk;
+        }
+        await Task.Delay(interval);
     }
 
     /// <summary>
