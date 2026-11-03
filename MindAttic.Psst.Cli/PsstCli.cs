@@ -1052,7 +1052,10 @@ public sealed class PsstCli
 
     /// <summary>
     /// Resolve a wrapped command name to a launchable full path using the same
-    /// PATH × PATHEXT search the shell would. Returns the original string
+    /// search cmd.exe does: the current folder first, then PATH, each × PATHEXT
+    /// (so <c>psst -- build</c> finds <c>.\build.cmd</c>). The current folder is
+    /// skipped when <c>NoDefaultCurrentDirectoryInExePath</c> is set, as cmd.exe
+    /// skips it. Returns the original string
     /// unchanged when the input already carries a path/extension or when no
     /// match is found (so <see cref="Process.Start(ProcessStartInfo)"/> still
     /// surfaces a sensible "not found" error).
@@ -1071,8 +1074,11 @@ public sealed class PsstCli
 
         var pathExts = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
+        var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var dirs = Environment.GetEnvironmentVariable("NoDefaultCurrentDirectoryInExePath") is null
+            ? [Environment.CurrentDirectory, .. pathDirs]
+            : pathDirs;
 
         var hasExtension = Path.HasExtension(command);
         foreach (var dir in dirs)
