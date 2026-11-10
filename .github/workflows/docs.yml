@@ -1,0 +1,17 @@
+# Publishes this repo's docs (README.md as the home page, docs/ as articles) to GitHub Pages.
+# The build lives once, in MindAttic.Agency; see HOUSE-LAW-14.
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  docs:
+    uses: mindattic/MindAttic.Agency/.github/workflows/docs-pages.yml@main
