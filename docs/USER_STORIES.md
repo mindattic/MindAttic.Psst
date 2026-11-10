@@ -161,3 +161,12 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 | M.PSST-T27 | 2026-10-31 | feature | closed | LAMP: move MindAttic.Psst's app-level settings and keys to MindAttic.Vault.Desktop (manifest, LoadOrSeed, shared named keys, cog opens Vault) | 034b068 full suite 171/171; editing via M.VALT-T62 |
 | M.PSST-T28 | 2026-10-31 | fix | closed | psst ping's Sources list names the Vault file as <LLM\|Brokers>\providers.json, not the Notifications\providers.json Psst actually reads, and never says whether it was found (found in the LAMP bug hunt) | e535996 PsstCliTests.PingSourceLines_NameVaultNotificationsProvidersJson_AndMarkItFound |
 | M.PSST-T29 | 2026-10-31 | docs | closed | Update USER_STORIES.md | — |
+| M.PSST-T30 | 2026-11-01 | fix | open | Email-to-SMS Gmail SMTP auth rejected: 'Username and Password not accepted' (BadCredentials) sending via ryandebraal@gmail.com | — |
+| M.PSST-T31 | 2026-11-02 | docs | open | Adopt MindAttic.Agency docs-site pipeline, publish README to GitHub Pages (HOUSE-LAW-14) | — |
+| M.PSST-T32 | 2026-11-02 | fix | closed | Bughunt sweep, two passes: find and fix real bugs across tracked source (user request 2026-11-02) | — |
+| M.PSST-T33 | 2026-11-02 | fix | closed | Command pointer in .agent/commands said a literal $source instead of its legacy path (install.ps1 escaping bug fixed in MAT-T84); point it at the real source, or the global command when the project copy is gone | — |
+| M.PSST-T34 | 2026-11-02 | fix | closed | README.htm was stale against README.md and had a mangled docs/USER_STORIES.md link (engine bug fixed in MAT-T84); regenerate it | — |
+| M.PSST-T35 | 2026-11-02 | fix | closed | Fix the open items the 2026-11-02 bughunt left for decision (ResolveExecutable checks current folder first) | — |
+| M.PSST-T36 | 2026-11-03 | chore | closed | Redeploy so the 2026-11-03 bughunt fixes (M.PSST-T32, M.PSST-T34, M.PSST-T35) go live | 0218a79 |
+| M.PSST-T37 | 2026-11-03 | fix | closed | Pin System.Security.Cryptography.Pkcs to patched 10.0.14 (MailKit pulls vulnerable 10.0.0: NU1902/NU1903) | — |
+| M.PSST-T38 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
