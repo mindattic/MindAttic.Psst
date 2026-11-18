@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 ///         from:       "you@gmail.com"
 ///       to:           "+15555550101"
 ///       toEmail:      "5555550101@vtext.com"
+///       emailTo:      "you@example.com"
 /// </code>
 /// </summary>
 public sealed record PsstConfiguration(
@@ -28,6 +29,13 @@ public sealed record PsstConfiguration(
     IReadOnlyList<string> Errors)
 {
     public const string Section = "MindAttic:Vault:Notifications";
+
+    /// <summary>
+    /// Real mailboxes (comma-separated) that get each notification as an ordinary email with a
+    /// subject line, next to the text message (M.PSST-T41). Config key <c>emailTo</c>; unlike
+    /// <c>toEmail</c>, which is a carrier email-to-SMS address and gets no subject.
+    /// </summary>
+    public string? RecipientInbox { get; init; }
 
     /// <summary>True when the email transport has enough config to attempt a send.</summary>
     public bool HasAnySmsTransport => Email is not null;
@@ -47,10 +55,12 @@ public sealed record PsstConfiguration(
         var to = root["to"];
         var toEmail = root["toEmail"];
 
-        if (email is not null && string.IsNullOrWhiteSpace(toEmail) && string.IsNullOrWhiteSpace(to))
-            errors.Add("email is configured but neither 'toEmail' nor 'to' (for carrier auto-fanout) is set");
+        var inbox = root["emailTo"];
 
-        return new PsstConfiguration(email, to, toEmail, errors);
+        if (email is not null && string.IsNullOrWhiteSpace(toEmail) && string.IsNullOrWhiteSpace(to) && string.IsNullOrWhiteSpace(inbox))
+            errors.Add("email is configured but none of 'to' (for carrier auto-fanout), 'toEmail' and 'emailTo' is set");
+
+        return new PsstConfiguration(email, to, toEmail, errors) { RecipientInbox = string.IsNullOrWhiteSpace(inbox) ? null : inbox.Trim() };
     }
 }
 

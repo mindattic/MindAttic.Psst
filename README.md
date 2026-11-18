@@ -95,7 +95,10 @@ psst contacts [list|add|rm]                Manage the contact book.
 psst sms [flags] <to> <message...>         Send a one-off SMS (see "Repeat and schedule").
 psst remind --at <when> [--name <id>] <message...>
                                            Notify the default recipient at <when>, any time ahead (see "Reminders").
-psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends and reminders.
+psst when <Trigger[(args)]> [flags] [message...]
+                                           Notify when an event happens (see "Events").
+psst triggers [check <Trigger>]            List every trigger, or look at one now.
+psst scheduled [list|cancel|clear]         Inspect / cancel pending scheduled sends, reminders and watches.
 psst pending                               Alias for `psst scheduled`.
 ```
 
@@ -121,7 +124,7 @@ Fires a notification immediately, with no wrapped command. Uses the supplied `me
 
 ### psst ping
 
-A print-only diagnostic that sends nothing. It shows:
+A diagnostic that sends nothing. After printing the configuration it signs in to the mail server and out again, and exits 1 with the server's own reason when the login is refused (a revoked Gmail app password otherwise shows up only as texts that never arrive). `psst ping --offline` skips the sign-in. It shows:
 
 - whether email-to-SMS is configured, and the `from` address if so
 - the configured recipient phone number and explicit recipient email
@@ -226,6 +229,36 @@ psst remind --at +30d "pay rent"            # no --name: an id is generated and 
 ```
 
 At `<when>` (same forms as `--schedule`) Psst notifies the default recipient, exactly like `psst test <message>` (`psst --silent test <message>`). With `--name`, scheduling the same name again replaces the earlier reminder; names are letters, digits, `.`, `_` and `-`. Reminders show in `psst scheduled` and are cancelled with `psst scheduled cancel <id>`; a fired reminder cancels its own Scheduler job. Line breaks in the message become spaces.
+
+### Events
+
+`psst when <Trigger[(args)]> [message...]` announces when something happens rather than at a time. It registers a repeating Scheduler job that looks at the trigger (once a minute by default) and notifies the default recipient, exactly like `psst test <message>`, when it happens.
+
+```powershell
+psst when NoActiveClisDetected "every CLI is done"          # once, then the watch removes itself
+psst when OrchestratorRedeployed --recurring                # every time, with the trigger's own sentence
+psst when "TicketClosed(M.ORCH-T1827)" --expires +2d "the busy flags landed"
+psst when "Weekdays(9am)" "standup"                         # clock triggers always repeat
+psst when CommandSucceeds --arg "gh run watch 123 --exit-status" "CI is green"
+psst triggers                                               # the full list
+psst triggers check "DiskFreeBelow(C, 20)"                  # look once, announce nothing
+```
+
+| Flag | Meaning |
+|---|---|
+| `--recurring` | Keep watching and announce every time it happens. Default is once. |
+| `--poll <duration>` | How often to look: `1m` (default and minimum) to `12h`. |
+| `--cooldown <duration>` | A recurring watch stays quiet this long after announcing. |
+| `--expires <when>` | Give up, unannounced, at that time (same forms as `--schedule`). |
+| `--name <id>` | Name the watch; the same name again replaces it. |
+| `--arg <value>` | One trigger argument, for values holding a comma, bracket or quote. |
+| `--force` | Register even though the trigger cannot be read right now. |
+
+Triggers come in three kinds. A condition (`NoActiveClisDetected`, `FileExists`, `HttpDown`, `ProcessExited`, `TicketClosed`, `CommandSucceeds`, ...) announces when it turns true, and a recurring one again each time it turns true after being false. A change (`OrchestratorRedeployed`, `AppRedeployed`, `FileChanged`, `RepoCommitted`, `HttpChanged`, `CommandOutputChanged`, ...) announces when its value differs from the last one seen. A clock (`Every`, `Daily`, `Weekdays`, `Weekly`) announces each time its moment comes. Names match whatever the case or punctuation (`no-active-clis-detected`). The three `Command…` triggers cover any event without a trigger of its own.
+
+`NoActiveClisDetected` asks MindAttic.Orchestrator (`orchestrator busy --all --running-only --skip-goal`) and leaves out CLIs on a `/goal`; `NoActiveClisDetected(includeGoal)` counts them.
+
+A watch that cannot send (mail server down, credentials refused) keeps its state and tries again at the next look; `psst scheduled` shows the reason. Watches are files, `%LOCALAPPDATA%\MindAttic\Psst\scheduled\<id>.watch.json`, beside the launcher their job runs (`psst watch-tick <id>`). Nothing fires while the PC is off or asleep.
 
 ### Examples
 
@@ -426,6 +459,7 @@ All email and recipient settings live under one `IConfiguration` section, `MindA
 | `email:from` | string | yes | The `From:` address on the outgoing SMTP message. |
 | `to` | string | one of `to`/`toEmail` | Recipient's US phone number (any punctuated form), auto-fanned-out across every carrier gateway. |
 | `toEmail` | string | one of `to`/`toEmail` | An explicit, pre-resolved carrier email-to-SMS address, unioned with the `to` fanout. |
+| `emailTo` | string | no | Real mailboxes (comma-separated) that also get every notification as an ordinary email with a `Psst: …` subject. Not used for `psst sms` to someone else. |
 
 `PsstConfiguration.Load` returns `Email: null` if any of `smtpHost`, `username`, `password` or `from` is missing (all four missing means silently unconfigured; one to three missing appends an entry to `Errors`, surfaced by `psst ping`). It also flags "email is configured but neither `toEmail` nor `to` is set" when you have wired SMTP credentials but forgot a recipient.
 

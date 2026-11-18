@@ -34,20 +34,41 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
 {
     private readonly EmailSettings _settings;
     private readonly string _toEmailGateway;
+    private readonly string? _inbox;
     private SmtpClient? _smtp;
+
+    /// <summary>Longest subject an inbox copy gets; the whole message is always in the body.</summary>
+    internal const int SubjectMaxChars = 78;
 
     public string TransportName => "Email-to-SMS";
 
-    public EmailSmsClient(EmailSettings settings, string toEmailGateway)
+    /// <param name="inbox">Real mailboxes (comma-separated) that also get the message, as an email with a subject.</param>
+    public EmailSmsClient(EmailSettings settings, string toEmailGateway, string? inbox = null)
     {
         _settings = settings;
         _toEmailGateway = toEmailGateway;
+        _inbox = inbox;
+    }
+
+    /// <summary>The subject line of an inbox copy: the message's first line, shortened.</summary>
+    internal static string SubjectFor(string message)
+    {
+        var line = (message ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+        if (line.StartsWith("psst:", StringComparison.OrdinalIgnoreCase)) line = line[5..].Trim();
+        if (line.Length == 0) line = "notification";
+        var subject = "Psst: " + line;
+        return subject.Length <= SubjectMaxChars ? subject : subject[..(SubjectMaxChars - 1)] + "…";
     }
 
     public async Task<SmsResult> SendAsync(string message, CancellationToken cancellationToken = default)
     {
+        var inboxes = (_inbox ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var recipients = _toEmailGateway
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(g => !inboxes.Contains(g))
+            .Concat(inboxes)
             .ToArray();
 
         if (recipients.Length == 0)
@@ -76,6 +97,8 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
                     // empty `Subject:` header that several gateways render as
                     // "/ /" dividers around the body; omitting it entirely
                     // produces a cleaner SMS on the receiving phone.
+                    // A real mailbox is the opposite: without a subject it files as "(no subject)".
+                    if (inboxes.Contains(to)) mail.Subject = SubjectFor(message);
                     mail.Body = new TextPart("plain") { Text = message };
                     await smtp.SendAsync(mail, cancellationToken);
                     succeeded.Add(to);
@@ -198,6 +221,23 @@ public sealed class EmailSmsClient : ISmsClient, IAsyncDisposable
     }
 
     public async ValueTask DisposeAsync() => await TryDisconnectAsync();
+
+    /// <summary>
+    /// Signs in to the mail server and signs out again, sending nothing (M.PSST-T41). Null when
+    /// the login works, else the server's own reason: a revoked app password otherwise shows up
+    /// only when a notification fails to arrive.
+    /// </summary>
+    public async Task<string?> CheckLoginAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureConnectedAsync(cancellationToken);
+            return null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) { return ex.Message; }
+        finally { await TryDisconnectAsync(); }
+    }
 
     private static string Truncate(string s, int max) =>
         string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max] + "…");

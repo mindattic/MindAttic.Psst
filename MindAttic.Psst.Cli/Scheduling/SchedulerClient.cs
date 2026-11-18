@@ -72,6 +72,21 @@ public static class SchedulerClient
         return Runner(args);
     }
 
+    /// <summary>
+    /// Register a repeating job <paramref name="id"/> that runs <paramref name="launcherPath"/>
+    /// every <paramref name="every"/> (a minute at least), from the next whole minute, until it
+    /// is cancelled. Used by <c>psst when</c> watches (M.PSST-T41).
+    /// </summary>
+    public static Task<Result> AddEveryAsync(string id, TimeSpan every, string launcherPath, string? description = null) =>
+        Runner(new[]
+        {
+            "job", "add", id,
+            "--owner", Owner,
+            "--every", every.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture),
+            "--run", $"cmd.exe /c \"{launcherPath}\"",
+            "--description", description ?? "Psst watch",
+        });
+
     /// <summary>Unregister job <paramref name="id"/>.</summary>
     public static Task<Result> CancelAsync(string id) =>
         Runner(new[] { "job", "cancel", id, "--owner", Owner });

@@ -37,7 +37,7 @@ using MindAttic.Vault.Paths;
 /// <see cref="SmsAsync"/> and <see cref="ParseSmsFlags"/>.
 /// </para>
 /// </summary>
-public sealed class PsstCli
+public sealed partial class PsstCli
 {
     public async Task<int> RunAsync(string[] args)
     {
@@ -86,10 +86,13 @@ public sealed class PsstCli
             {
                 "--"                       => await WrapAsync(args.Skip(1).ToArray(), psstConfig, silent),
                 "test"                     => await TestAsync(args.Skip(1).ToArray(), psstConfig, silent),
-                "ping"                     => Ping(psstConfig),
+                "ping"                     => await PingAsync(psstConfig, args.Skip(1).ToArray()),
                 "sound"                    => await SoundAsync(),
                 "contacts"                 => Contacts(args.Skip(1).ToArray()),
                 "remind"                   => await RemindAsync(args.Skip(1).ToArray()),
+                "when"                     => await WhenAsync(args.Skip(1).ToArray(), silent),
+                "triggers" or "trigger"    => Triggers(args.Skip(1).ToArray()),
+                "watch-tick"               => await WatchTickAsync(args.Skip(1).ToArray(), psstConfig),
                 "sms"                      => await SmsAsync(args.Skip(1).ToArray(), psstConfig),
                 "scheduled" or "pending"   => await ScheduledAsync(args.Skip(1).ToArray()),
                 _                          => UnknownCommand(args[0]),
@@ -274,7 +277,33 @@ public sealed class PsstCli
 
     private const string RemindUsage = "usage: psst remind --at <when> [--name <id>] <message...>";
 
-    /// <summary>Print what transports would fire without sending anything.</summary>
+    /// <summary>
+    /// Print what transports would fire without sending anything, then sign in to the mail server
+    /// to prove the credentials still work (<c>--offline</c> skips that). Exit 1 when they don't.
+    /// </summary>
+    private static async Task<int> PingAsync(PsstConfiguration config, string[] args)
+    {
+        var shown = Ping(config);
+        if (config.Email is null || args.Contains("--offline")) return shown;
+        await using var client = new EmailSmsClient(config.Email, "");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        string? problem;
+        try { problem = await client.CheckLoginAsync(timeout.Token); }
+        catch (OperationCanceledException) { problem = "no answer from the mail server within 30 seconds"; }
+        Console.WriteLine();
+        if (problem is null)
+        {
+            Console.WriteLine($"Mail login: ✓ {config.Email.SmtpHost} accepted {config.Email.Username}");
+            return shown;
+        }
+        Console.WriteLine($"Mail login: ✗ {config.Email.SmtpHost} refused {config.Email.Username}");
+        Console.WriteLine($"  {problem.ReplaceLineEndings(" ")}");
+        Console.WriteLine("  Nothing Psst sends will arrive until this is fixed. For Gmail: make a new app password");
+        Console.WriteLine("  (https://myaccount.google.com/apppasswords) and put it in MindAttic Vault under");
+        Console.WriteLine($"  Credentials → Notifications → email password ({PsstConfigurationSources.GetVaultCredentialsPath()}).");
+        return 1;
+    }
+
     private static int Ping(PsstConfiguration config)
     {
         var derivedFanout = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
@@ -284,6 +313,7 @@ public sealed class PsstCli
         Console.WriteLine($"  Email-to-SMS:  {(config.Email is null ? "not configured" : "configured (" + config.Email.From + ")")}");
         Console.WriteLine($"  Recipient #:   {config.RecipientPhoneNumber ?? "<unset>"}");
         Console.WriteLine($"  Recipient @ explicit:  {config.RecipientEmailSmsAddress ?? "<unset>"}");
+        Console.WriteLine($"  Email inbox (emailTo): {config.RecipientInbox ?? "<unset: announcements go out as texts only>"}");
         if (effectiveEmailRecipients is not null)
         {
             var count = effectiveEmailRecipients.Split(',').Length;
@@ -642,6 +672,8 @@ public sealed class PsstCli
         {
             RecipientPhoneNumber = phone,
             RecipientEmailSmsAddress = null,
+            // A text to someone else is not copied to the owner's own mailbox.
+            RecipientInbox = null,
         };
         // `await using` so the underlying email transport gets a chance to
         // QUIT its SMTP session at the end of a --repeat loop instead of
@@ -873,6 +905,7 @@ public sealed class PsstCli
             Console.WriteLine("  psst sms <to> \"<message>\" --schedule 2027-03-01   # or 2027-03-01T14:30, +30d, +1y");
             Console.WriteLine("  psst remind --at +30d --name rent \"pay rent\"");
             Console.WriteLine("  psst sms <to> \"<message>\" --repeat 3 --every 5m   # implicit `--schedule now`");
+            Console.WriteLine("  psst when NoActiveClisDetected \"every CLI is done\"   # an event; `psst triggers` lists them");
             return 0;
         }
 
@@ -883,7 +916,11 @@ public sealed class PsstCli
             var fire = (t.NextRunTime ?? t.FireTimeFromSidecar)?.ToString("yyyy-MM-dd HH:mm")
                        ?? "<unknown>";
             Console.WriteLine($"  ⏰ {fire}   {t.TaskName}");
-            if (t.Metadata is not null)
+            if (WatchLines(t.TaskName) is { Count: > 0 } watchLines)
+            {
+                foreach (var line in watchLines) Console.WriteLine(line);
+            }
+            else if (t.Metadata is not null)
             {
                 Console.WriteLine($"     → {t.Metadata.Recipient}: \"{Truncate(t.Metadata.Message, 60)}\"");
                 if (t.Metadata.Repeat > 1)
@@ -968,7 +1005,7 @@ public sealed class PsstCli
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..(max - 1)] + "…";
 
-    private static async Task Notify(PsstConfiguration config, string message, bool silent)
+    private static async Task<NotifyResult> Notify(PsstConfiguration config, string message, bool silent)
     {
         // Auto-notifier (post-command wrap + `psst test`) has no contact
         // context — it just honors PSST_VIA when set, else the project
@@ -982,6 +1019,7 @@ public sealed class PsstCli
             Console.WriteLine($"  {(a.Success ? "✓" : "✗")} {a.Transport}: {a.Detail}");
         if (result.SmsAttempts.Count == 0)
             Console.WriteLine("  · no SMS transport configured — run `psst ping` for setup hints");
+        return result;
     }
 
     private static int UnknownCommand(string cmd)
@@ -1002,7 +1040,12 @@ public sealed class PsstCli
         Console.WriteLine("  remind --at <when> [--name <id>] <message...>");
         Console.WriteLine("                                      Notify the default recipient at <when> (any future time).");
         Console.WriteLine("                                      Same --name again replaces that reminder.");
-        Console.WriteLine("  ping                                Show which SMS transports are configured.");
+        Console.WriteLine("  when <Trigger[(args)]> [--recurring] [--poll <1m>] [--name <id>] [message...]");
+        Console.WriteLine("                                      Notify when an event happens (every CLI done, an app");
+        Console.WriteLine("                                      redeployed, a file, a process, a URL, any command...).");
+        Console.WriteLine("                                      A Scheduler job looks at it every --poll. Once by default.");
+        Console.WriteLine("  triggers [check <Trigger>]          List every trigger, or look at one now.");
+        Console.WriteLine("  ping [--offline]                    Show what is configured and test the mail login (sends nothing).");
         Console.WriteLine("  sound                               Just play the Psst sound.");
         Console.WriteLine("  contacts [list|add|rm]              Manage the contact book.");
         Console.WriteLine("  sms [flags] <name-or-phone> <message...>");
@@ -1033,6 +1076,10 @@ public sealed class PsstCli
         Console.WriteLine("  psst sms jordan \"standup\" --start 9:00am --repeat 5 --every 1m");
         Console.WriteLine("  psst sms jordan \"renew the cert\" --schedule 2027-03-01");
         Console.WriteLine("  psst remind --at +30d --name rent \"pay rent\"");
+        Console.WriteLine("  psst when NoActiveClisDetected \"every CLI is done\"");
+        Console.WriteLine("  psst when OrchestratorRedeployed --recurring");
+        Console.WriteLine("  psst when \"Weekdays(9am)\" \"standup\"");
+        Console.WriteLine("  psst when CommandSucceeds --arg \"gh run watch 123 --exit-status\" \"CI is green\"");
         Console.WriteLine("  psst contacts add jordan +15551234567");
         Console.WriteLine();
         Console.WriteLine(CredentialChainHelp);

@@ -99,8 +99,9 @@ public sealed class PsstNotifier : IAsyncDisposable
                 // the recipient's real carrier delivers.
                 var derived = CarrierGateways.BuildFanout(config.RecipientPhoneNumber);
                 var combined = CarrierGateways.Combine(config.RecipientEmailSmsAddress, derived);
-                if (config.Email is not null && !string.IsNullOrWhiteSpace(combined))
-                    yield return new EmailSmsClient(config.Email, combined);
+                // `emailTo` mailboxes ride the same SMTP session, as ordinary emails with a subject.
+                if (config.Email is not null && (!string.IsNullOrWhiteSpace(combined) || config.RecipientInbox is not null))
+                    yield return new EmailSmsClient(config.Email, combined ?? "", config.RecipientInbox);
                 break;
         }
     }

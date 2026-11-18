@@ -78,6 +78,9 @@ public static class ScheduledTaskLister
         var dir = ScheduledTaskRegistrar.ScheduledDirectory();
         TryDelete(Path.Combine(dir, $"{id}.cmd"));
         TryDelete(Path.Combine(dir, $"{id}.json"));
+        // A `psst when` watch keeps its state beside the launcher (M.PSST-T41).
+        TryDelete(Path.Combine(dir, $"{id}.watch.json"));
+        TryDelete(Path.Combine(dir, $"{id}.watch.json.lock"));
         return null;
     }
 
