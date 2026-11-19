@@ -172,3 +172,6 @@ Dependency-ordered toward "every documented behavior has a direct test" (the hea
 | M.PSST-T38 | 2026-11-10 | chore | closed | Crash recovery: commit the command-catalog sync (.agent/commands/*.md) and regenerated docs/USER_STORIES.md left uncommitted by the session crash | — |
 | M.PSST-T39 | 2026-11-10 | chore | closed | Adopt the shared docs-site pipeline: turn on GitHub Pages | — |
 | M.PSST-T40 | 2026-11-17 | docs | closed | Update USER_STORIES.md | — |
+| M.PSST-T41 | 2026-11-18 | feature | closed | Psst overhaul: announce to the owner (SMS and email) through a Scheduler job that runs when the time comes, including a condition such as every open CLI being done; fix what is broken on the way | de62c5b |
+| M.PSST-T42 | 2026-11-18 | chore | closed | Vault: store the owner's new Gmail app password for Psst's mail login (the old one was refused with 5.7.8) | — |
+| M.PSST-T43 | 2026-11-18 | docs | closed | Update USER_STORIES.md | — |
